@@ -1,0 +1,21 @@
+{
+  "name": "武汉大学珞珈量子 UI 素材包",
+  "version": "1.0.0",
+  "created": "2026-08-05",
+  "generator": "OpenAI built-in image generation",
+  "style": "原创珞珈建筑、量子轨迹、细线稿与水彩纸张",
+  "brand_overlay": "官方校徽和标准字必须由项目已有资源独立叠加",
+  "official_brand": [
+    {"file":"official-brand/whu-seal.png","dimensions":"1796x1795","sha256":"5354164cc78556aa08958fabbd07c301f015474b90c0406f732e0a03d8e0d6d7"},
+    {"file":"official-brand/whu-signature.png","dimensions":"2334x734","sha256":"ccad21c680e8950b1437282347f62c8397ac7bafe76232678185738f9173994f"},
+    {"file":"official-brand/whu-signature-white.png","dimensions":"2334x734","sha256":"32fc6fa119b63b22b488fb817dc6000c978729c38abcb7dc947f741aa07fecfa"}
+  ],
+  "assets": [
+    {"id":"teacher-hero-desktop","png":"source-png/01-teacher-hero-desktop.png","webp":"webp/01-teacher-hero-desktop.webp","dimensions":"1672x941","focus":"right center","use":"教师审核台桌面主视觉","webp_sha256":"47d7b6bcd40e915d32a3a1ebf4bbfed5b35a3f0df28f49c40a4ff82f9f975d74"},
+    {"id":"teacher-hero-mobile","png":"source-png/02-teacher-hero-mobile.png","webp":"webp/02-teacher-hero-mobile.webp","dimensions":"941x1672","focus":"right bottom","use":"教师端移动主视觉","webp_sha256":"ce5be33fe40da3532ff6ea3c6f4715c2d0208dc6df7c90ac7bb86b50027bdf97"},
+    {"id":"section-linescape","png":"source-png/03-section-linescape.png","webp":"webp/03-section-linescape.webp","dimensions":"2167x725","focus":"center bottom","use":"内容分隔与页脚线景","webp_sha256":"430ca0915d4895896284cff1e1c688bcb9f5f660dde3c7aa9fe06de211a51c5b"},
+    {"id":"review-card","png":"source-png/04-review-card.png","webp":"webp/04-review-card.webp","dimensions":"1448x1086","focus":"right center","use":"审核与报告归档功能卡","webp_sha256":"3d62a03689cc8cdc11cffd374faebeaffdd7b829574e633336d7f6aa0d0484f5"},
+    {"id":"experiment-card","png":"source-png/05-experiment-card.png","webp":"webp/05-experiment-card.webp","dimensions":"1448x1086","focus":"right bottom","use":"实验与版本管理功能卡","webp_sha256":"d926c36257be0a8d8e5c65c393cba53cd7041ec104383325aa961e80fb237ec8"},
+    {"id":"analytics-card","png":"source-png/06-analytics-card.png","webp":"webp/06-analytics-card.webp","dimensions":"1448x1086","focus":"right bottom","use":"学情与学生管理功能卡","webp_sha256":"61b00fa78bcd3b637250db97b30d39833eb41132383bd6c24598aa81725fb0e4"}
+  ]
+}

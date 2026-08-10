@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block title %}报告与荣誉 · 珞珈量子实验馆{% endblock %}
+{% block content %}
+<header class="page-hero compact page-pad"><div><span class="eyebrow">REPORTS & HONORS</span><h1>报告与荣誉</h1><p>查看不可覆盖的正式报告，以及由自己完成实验流程所解锁的学习纪念。</p></div></header>
+{% include "_learning_memorial.html" %}
+<section class="page-pad records-layout report-archive">
+  <article class="content-card"><header class="card-heading"><div><h2>正式报告记录</h2><p>每个提交修订对应一份独立报告；这里不展示教师评分或内部审核信息。</p></div><i data-lucide="file-text"></i></header>
+    <div class="report-list">{% for revision, exp, version in reports %}<div><span class="report-index">R{{ revision.revision_no }}</span><span><b>{{ exp.title }}</b><small>版本 {{ version.version_no }} · {{ revision.submitted_at.strftime('%Y-%m-%d') }}</small></span><span class="status {{ revision.status }}">{{ '已撤回' if revision.status == 'withdrawn' else ('已由新修订替代' if revision.status == 'superseded' else '已提交') }}</span><a class="text-link" href="{{ url_for('student.report', submission_id=revision.id) }}">打开</a></div>{% else %}<p class="empty-state">暂无正式报告。完成实验后可在“我的实验”中进入报告编辑器。</p>{% endfor %}</div>
+  </article>
+</section>
+{% endblock %}

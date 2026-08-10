@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}实验学情观测台 · 珞珈量子实验馆{% endblock %}
+{% block content %}
+<section class="teacher-v4-page teacher-analytics-page page-pad" data-teacher-analytics data-api-url="{{ url_for('api.teacher_analytics') }}">
+  <header class="teacher-v4-heading analytics-heading">
+    <div><span class="eyebrow">LEARNING OBSERVATORY</span><h1>实验学情观测台</h1><p>在一个页面掌握班级进度、实验任务完成率和学生个体动态。</p></div>
+    <div class="analytics-heading-tools"><button class="secondary-button analytics-filter-toggle" type="button" data-analytics-filter-toggle aria-expanded="false" aria-controls="analyticsFilters"><i data-lucide="sliders-horizontal"></i> 筛选</button><nav class="teacher-subnav" aria-label="审核工作区"><a href="{{ url_for('teacher.dashboard') }}"><i data-lucide="inbox"></i> 审核队列</a><a class="active" href="{{ url_for('teacher.analytics') }}"><i data-lucide="chart-no-axes-combined"></i> 学情观测</a></nav></div>
+  </header>
+
+  <form class="teacher-surface analytics-filters" id="analyticsFilters" method="get" data-analytics-filters>
+    <label>班级<select name="course" data-analytics-course>{% for course in analytics.courses %}<option value="{{ course.id }}" {{ 'selected' if analytics.course and course.id == analytics.course.id }}>{{ course.name }}</option>{% endfor %}</select></label>
+    <label>实验项目<select name="experiment"><option value="">全部实验</option>{% for item in analytics.experiment_stats %}<option value="{{ item.experiment_id }}" {{ 'selected' if analytics.filters.experiment_id == item.experiment_id }}>{{ item.experiment }}</option>{% endfor %}</select></label>
+    <label>任务类型<select name="task_type"><option value="">全部任务</option><option value="prestudy" {{ 'selected' if analytics.filters.task_type == 'prestudy' }}>预习</option><option value="report" {{ 'selected' if analytics.filters.task_type == 'report' }}>报告</option></select></label>
+    <label>学习状态<select name="status"><option value="">全部状态</option><option value="completed" {{ 'selected' if analytics.filters.status == 'completed' }}>已完成</option><option value="in_progress" {{ 'selected' if analytics.filters.status == 'in_progress' }}>进行中</option><option value="not_started" {{ 'selected' if analytics.filters.status == 'not_started' }}>未开始</option></select></label>
+    <label>开始日期<input name="submitted_from" type="date" value="{{ request.args.get('submitted_from','') }}"></label>
+    <label>结束日期<input name="submitted_to" type="date" value="{{ request.args.get('submitted_to','') }}"></label>
+    <div class="analytics-filter-actions"><button class="primary" type="submit">应用筛选</button><button class="secondary-button" type="submit" formaction="{{ url_for('teacher.export_analytics') }}"><i data-lucide="file-spreadsheet"></i> 导出报表</button></div>
+  </form>
+  <div class="analytics-live"><span class="live-dot"></span><span data-analytics-sync>每 30 秒自动刷新</span><button type="button" data-analytics-refresh><i data-lucide="refresh-cw"></i> 立即刷新</button></div>
+
+  <section class="teacher-surface analytics-overview-panel" id="classOverview">
+    <header class="teacher-section-title"><div><span class="eyebrow">CLASS OVERVIEW</span><h2>班级整体进度概览</h2><p>完成率按当前筛选范围内“学生 × 任务”计算。</p></div><span class="analytics-scope-name" data-scope-name>{{ analytics.course.name if analytics.course else '暂无班级' }}</span></header>
+    <div class="analytics-overview-grid">
+      <div class="teacher-v4-metrics analytics-metrics">
+        <article><small>整体实验完成率</small><b class="teacher-number" data-metric="completion_rate">{{ analytics.summary.completion_rate }}%</b><span data-assignment-context>{{ analytics.summary.task_count }} 项任务 × {{ analytics.summary.student_count }} 名学生</span></article>
+        <article><small>预习平均分</small><b class="teacher-number" data-metric="quiz_average">{{ analytics.summary.quiz_average if analytics.summary.quiz_average is not none else '—' }}</b><span>学生已完成预习</span></article>
+        <article><small>教师评分均分</small><b class="teacher-number" data-metric="teacher_score_average">{{ analytics.summary.teacher_score_average if analytics.summary.teacher_score_average is not none else '—' }}</b><span>仅教师内部可见</span></article>
+        <article class="metric-warning"><small>停滞预警</small><b class="teacher-number" data-metric="warning_count">{{ analytics.summary.warning_count }}</b><span>未完成且 7 日无活动</span></article>
+      </div>
+      <aside class="slowest-students"><header><span><i data-lucide="timer-reset"></i><b>进度最慢的 3 名学生</b></span><small>点击即可下钻到个体明细</small></header><div data-slowest-students>
+        {% for student in analytics.slowest_students %}<button type="button" data-student-drill="{{ student.id }}"><span class="teacher-number">{{ loop.index }}</span><div><b>{{ student.name }}</b><small>{{ student.username }} · {{ student.warning_reason or '仍在推进' }}</small></div><strong class="teacher-number">{{ student.completion_rate }}%</strong></button>{% else %}<p class="empty-copy">当前班级暂无学生</p>{% endfor %}
+      </div></aside>
+    </div>
+  </section>
+
+  <section class="teacher-surface analytics-experiment-panel" id="experimentCompletion">
+    <header class="teacher-section-title"><div><span class="eyebrow">EXPERIMENT COMPLETION</span><h2>实验任务完成率统计</h2><p>对照预习、报告、得分与待审核量，快速识别实验卡点。</p></div></header>
+    <div class="teacher-table-wrap"><table class="teacher-table analytics-experiment-table"><thead><tr><th>实验项目</th><th>预习完成率</th><th>报告完成率</th><th>预习均分</th><th>教师评分均分</th><th>待审核</th><th>最近提交</th></tr></thead><tbody data-experiment-stats>
+      {% for item in analytics.experiment_stats %}<tr><td data-label="实验项目"><b>{{ item.experiment }}</b><small>{{ item.experiment_code }}</small></td><td class="teacher-number" data-label="预习完成率"><span class="inline-rate"><i style="width:{{ item.prestudy_rate or 0 }}%"></i></span><b>{{ item.prestudy_rate if item.prestudy_rate is not none else '—' }}{% if item.prestudy_rate is not none %}%{% endif %}</b></td><td class="teacher-number" data-label="报告完成率"><span class="inline-rate report"><i style="width:{{ item.report_rate or 0 }}%"></i></span><b>{{ item.report_rate if item.report_rate is not none else '—' }}{% if item.report_rate is not none %}%{% endif %}</b></td><td class="teacher-number" data-label="预习均分">{{ item.quiz_average if item.quiz_average is not none else '—' }}</td><td class="teacher-number" data-label="教师评分均分">{{ item.teacher_score_average if item.teacher_score_average is not none else '—' }}</td><td data-label="待审核"><span class="status {{ 'draft' if item.pending_reviews else 'published' }} teacher-number">{{ item.pending_reviews }}</span></td><td class="teacher-number" data-label="最近提交">{{ item.latest_submission_at[5:16].replace('T',' ') if item.latest_submission_at else '—' }}</td></tr>{% else %}<tr><td class="empty-table" colspan="7">当前筛选范围暂无实验任务</td></tr>{% endfor %}
+    </tbody></table></div>
+  </section>
+
+  <section class="teacher-surface analytics-student-panel" id="studentDetails">
+    <header class="teacher-section-title"><div><span class="eyebrow">STUDENT DETAILS</span><h2>学生个体学情明细</h2><p>支持百级名单滚动查看；预警行优先突出，点击概览会自动定位。</p></div><div class="analytics-student-toolbar"><div class="student-status-tabs" role="group" aria-label="学生状态筛选"><button class="active" type="button" data-student-status-filter="all">全部</button><button type="button" data-student-status-filter="incomplete">未完成</button><button type="button" data-student-status-filter="warning">预警</button></div><label class="analytics-student-search"><i data-lucide="search"></i><input type="search" placeholder="搜索姓名或学号" data-student-search></label></div></header>
+    <div class="teacher-table-wrap analytics-student-table-wrap"><table class="teacher-table analytics-student-table"><thead><tr><th>学生</th><th>任务状态</th><th>整体进度</th><th>预习均分</th><th>教师评分均分</th><th>最近活动 / 提交时效</th><th>预警</th></tr></thead><tbody data-student-details>
+      {% for student in analytics.students %}<tr id="student-{{ student.id }}" data-student-id="{{ student.id }}" data-student-query="{{ student.name }} {{ student.username }}" data-student-incomplete="{{ 'true' if student.completion_rate < 100 else 'false' }}" data-student-warning="{{ 'true' if student.warning else 'false' }}" class="{{ 'is-warning' if student.warning }}"><td data-label="学生"><b>{{ student.name }}</b><small>{{ student.username }}</small></td><td class="teacher-number" data-label="任务状态">{{ student.completed }} 完成 · {{ student.in_progress }} 进行中 · {{ student.not_started }} 未开始</td><td class="teacher-number" data-label="整体进度"><span class="student-progress"><i style="width:{{ student.completion_rate }}%"></i></span><b>{{ student.completion_rate }}%</b></td><td class="teacher-number" data-label="预习均分">{{ student.quiz_average if student.quiz_average is not none else '—' }}</td><td class="teacher-number" data-label="教师评分均分">{{ student.teacher_score_average if student.teacher_score_average is not none else '—' }}</td><td class="teacher-number" data-label="最近活动">{{ student.latest_activity_at[5:16].replace('T',' ') if student.latest_activity_at else '从未活动' }}<small>{{ student.inactive_days ~ ' 天前' if student.inactive_days is not none else '尚未开始' }}</small></td><td data-label="预警">{% if student.warning %}<span class="analytics-warning"><i data-lucide="triangle-alert"></i>{{ student.warning_reason }}</span>{% else %}<span class="status published">正常</span>{% endif %}</td></tr>{% else %}<tr><td class="empty-table" colspan="7">当前筛选范围暂无学生</td></tr>{% endfor %}
+    </tbody></table></div>
+  </section>
+</section>
+{% endblock %}

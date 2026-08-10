@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block title %}实验探索 · 珞珈量子实验馆{% endblock %}
+{% macro status_text(item) -%}
+{%- if not item -%}未开始
+  {%- elif item.status == 'withdrawn' -%}已撤回
+  {%- elif item.status == 'submitted' -%}已提交
+  {%- else -%}{{ item.status }}
+  {%- endif -%}
+{%- endmacro %}
+{% block content %}
+{% set exp_images = {'ION':'images/experiments/ion-trap.webp','QKD':'images/experiments/qkd.webp','ENT':'images/experiments/entanglement.webp','NV':'images/experiments/diamond-nv.webp','SPI':'images/experiments/single-pixel.webp'} %}
+{% set fallback_image = 'images/brand/campus-sakura.webp' %}
+<section class="home-intro page-pad">
+  <article class="intro-panel museum-panel">
+    <span class="eyebrow">LUOJIA QUANTUM COLLECTION</span>
+    <h1>珞珈量子探索</h1>
+    <h2>{{ user.name }}，欢迎回来</h2>
+    <p>沿着已发布实验路径完成预习、操作、拟合与报告。每次提交和修订均完整保留。</p>
+    <div class="metric-strip">
+      <div><small>已完成实验</small><b>{{ completed_experiment_count }} / {{ items|length }}</b></div>
+      <div><small>报告修订</small><b>{{ submission_count }}</b></div>
+      <div><small>实验目录</small><b>{{ items|length }} 项</b></div>
+    </div>
+  </article>
+  {% if featured %}{% set exp, version, latest = featured %}
+  {% set featured_cover = cover_assets.get(version.id) %}
+  <article class="featured-experiment museum-panel">
+    <div class="featured-copy">
+      <span class="eyebrow">{{ featured_kicker }}</span>
+      <h2>{{ exp.title }}</h2>
+      <p>{{ version.definition.summary }}</p>
+      <div class="tag-row"><span class="status {{ latest.status if latest else 'new' }}">{{ status_text(latest) }}</span></div>
+      <a class="text-link light" href="{{ url_for('student.experiment', code=exp.code) }}">{{ featured_action }} <i data-lucide="arrow-right"></i></a>
+      {% if latest %}<small>报告已提交 · 最近修订 R{{ latest.revision_no }}</small>{% endif %}
+    </div>
+    <div class="campus-illustration living-campus" aria-hidden="true"><img src="{{ url_for('auth.media', sha256=featured_cover.sha256) if featured_cover else url_for('static', filename='images/brand/campus-sakura.webp') }}" alt=""><span class="campus-light"></span><span class="hero-image-caption"><img src="{{ url_for('static', filename='images/brand/whu-seal.png') }}" alt="">{{ '教师实验封面' if featured_cover else '珞珈山 · 樱花季' }}</span></div>
+  </article>
+  {% endif %}
+</section>
+
+<section class="collection-section page-pad">
+  <header class="section-title experiment-gallery-heading">
+    <div><span class="eyebrow">EXPERIMENT COLLECTION</span><h2>实验展厅</h2></div>
+    <div class="experiment-gallery-actions">
+      <div class="experiment-gallery-controls" aria-label="实验展厅浏览控制">
+        <button type="button" data-gallery-prev aria-label="向左浏览实验"><i data-lucide="arrow-left"></i></button>
+        <button type="button" data-gallery-next aria-label="向右浏览实验"><i data-lucide="arrow-right"></i></button>
+      </div>
+      <a class="text-link" href="{{ url_for('student.records') }}">查看全部实验数据 <i data-lucide="arrow-right"></i></a>
+    </div>
+  </header>
+  <div class="experiment-card-grid" data-experiment-gallery tabindex="0" aria-label="实验展厅，共 {{ items|length }} 项">
+    {% for exp, version, latest in items %}
+    {% set cover_asset = cover_assets.get(version.id) %}
+    <article class="experiment-display-card exp-{{ exp.code|lower }}">
+      <div class="experiment-visual" aria-hidden="true" style="--exp-image:url('{{ url_for('auth.media', sha256=cover_asset.sha256) if cover_asset else url_for('static', filename=exp_images.get(exp.code, fallback_image)) }}')"><span class="experiment-no">{{ '%02d'|format(loop.index) }}</span><span class="visual-vignette"></span></div>
+      <div class="experiment-card-body">
+        <h3>{{ exp.title }}</h3><p>{{ version.definition.summary }}</p>
+
+        {% set prequiz_score = quiz_score_map.get(exp.id) %}
+        {% if prequiz_score is not none %}<div class="score-line"><span>预习题成绩 <b>{{ prequiz_score }}/100</b></span>{% if latest %}<span>报告 R{{ latest.revision_no }}</span>{% endif %}</div>{% elif latest %}<div class="score-line muted">报告修订 R{{ latest.revision_no }}</div>{% else %}<div class="score-line muted">尚未完成预习</div>{% endif %}
+        <a class="text-link" href="{{ url_for('student.experiment', code=exp.code) }}">进入实验 <i data-lucide="arrow-right"></i></a>
+      </div>
+    </article>
+    {% endfor %}
+  </div>
+</section>
+
+<section class="home-honor-link page-pad"><article><span class="eyebrow">HONOR GALLERY</span><div><div><h2>荣誉展厅</h2><p>查看已解锁的实验探索纪念证书与荣誉牌。</p></div><a class="primary" href="{{ url_for('student.achievements') }}">进入荣誉展厅 <i data-lucide="arrow-right"></i></a></div></article></section>
+
+{% endblock %}

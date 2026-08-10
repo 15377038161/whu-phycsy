@@ -1,0 +1,53 @@
+:root {
+  --whu-ui-navy: #002554;
+  --whu-ui-navy-soft: #244865;
+  --whu-ui-jade: #55766c;
+  --whu-ui-ivory: #f7f2e9;
+  --whu-ui-gold: #b18a43;
+  --whu-ui-blossom: #e5b7bc;
+  --whu-ui-ink: #102d45;
+}
+/* Copy the pack into a public static directory before using these examples. */
+.whu-ui-teacher-hero {
+  background-color: var(--whu-ui-ivory);
+  background-image:
+    linear-gradient(90deg, rgba(247, 242, 233, .98) 0%, rgba(247, 242, 233, .83) 39%, rgba(247, 242, 233, .2) 72%),
+    url("webp/01-teacher-hero-desktop.webp");
+  background-position: center right;
+  background-repeat: no-repeat;
+  background-size: cover;
+}
+
+.whu-ui-linescape {
+  background: url("webp/03-section-linescape.webp") center bottom / cover no-repeat;
+}
+
+.whu-ui-card-review,
+.whu-ui-card-experiment,
+.whu-ui-card-analytics {
+  background-color: var(--whu-ui-ivory);
+  background-position: center right;
+  background-repeat: no-repeat;
+  background-size: cover;
+}
+
+.whu-ui-card-review {
+  background-image: linear-gradient(90deg, rgba(247, 242, 233, .98), rgba(247, 242, 233, .7)), url("webp/04-review-card.webp");
+}
+
+.whu-ui-card-experiment {
+  background-image: linear-gradient(90deg, rgba(247, 242, 233, .98), rgba(247, 242, 233, .72)), url("webp/05-experiment-card.webp");
+}
+
+.whu-ui-card-analytics {
+  background-image: linear-gradient(90deg, rgba(247, 242, 233, .98), rgba(247, 242, 233, .72)), url("webp/06-analytics-card.webp");
+}
+
+@media (max-width: 720px) {
+  .whu-ui-teacher-hero {
+    background-image:
+      linear-gradient(180deg, rgba(247, 242, 233, .98) 0%, rgba(247, 242, 233, .82) 42%, rgba(247, 242, 233, .18) 74%),
+      url("webp/02-teacher-hero-mobile.webp");
+    background-position: center bottom;
+  }
+}

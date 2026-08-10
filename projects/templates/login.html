@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}登录 · 珞珈量子实验馆{% endblock %}
+{% block content %}
+<section class="login-page">
+  <div class="login-showcase">
+    <div class="login-brand"><img class="login-logo" src="{{ url_for('static', filename='images/brand/whu-signature-white.png') }}" alt="武汉大学"></div>
+    <div class="login-copy"><span class="eyebrow">LUOJIA QUANTUM MUSEUM</span><h1>从真实实验出发，<br>理解量子世界。</h1></div>
+    <div class="login-campus living-campus" aria-hidden="true"><img src="{{ url_for('static', filename='images/brand/campus-sakura.webp') }}" alt=""><span class="campus-light"></span><span class="image-wash"></span></div>
+    <div class="login-kinetic" aria-hidden="true">
+      <span class="orbit orbit-a"><i></i></span><span class="orbit orbit-b"><i></i></span><span class="orbit orbit-c"><i></i></span>
+      <svg class="quantum-trace" viewBox="0 0 320 80" focusable="false"><path d="M2 57 C35 57 39 18 74 18 S111 64 146 64 188 27 220 27 251 52 318 12"/></svg>
+    </div>
+  </div>
+  <div class="login-form-side">
+    <form class="login-card" method="post">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <span class="eyebrow">WELCOME BACK</span><h2>登录实验平台</h2><p>学生使用学号登录，教师使用实验管理账号登录。</p>
+      <label>账号<span class="input-shell"><i data-lucide="user-round"></i><input name="username" autocomplete="username" required autofocus placeholder="请输入学号或教师账号"></span></label>
+      <label>密码<span class="input-shell"><i data-lucide="lock-keyhole"></i><input name="password" type="password" autocomplete="current-password" required placeholder="请输入密码"></span></label>
+      <button class="primary large-button" type="submit">进入平台 <i data-lucide="arrow-right"></i></button>
+    </form>
+  </div>
+</section>
+{% endblock %}

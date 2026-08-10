@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}实验审核台 · 珞珈量子实验馆{% endblock %}
+{% block content %}
+<section class="teacher-v4-page teacher-review-page page-pad">
+  <header class="teacher-v4-heading teacher-page-heading">
+    <div><span class="eyebrow">REVIEW QUEUE</span><h1>实验报告审核</h1><p>按提交顺序处理待办，人工评分与内部评语仅在教师端保存。</p></div>
+    <div class="teacher-heading-actions"><span class="teacher-page-status {{ 'attention' if stats.pending else 'clear' }}"><i data-lucide="{{ 'clock-3' if stats.pending else 'circle-check-big' }}"></i><b class="teacher-number">{{ stats.pending }}</b> 份待审核</span><nav class="teacher-subnav" aria-label="审核工作区"><a class="active" href="{{ url_for('teacher.dashboard') }}"><i data-lucide="inbox"></i> 审核队列</a><a href="{{ url_for('teacher.analytics') }}"><i data-lucide="chart-no-axes-combined"></i> 学情观测</a></nav></div>
+  </header>
+  <div class="teacher-v4-metrics">
+    <article><span class="metric-icon"><i data-lucide="layers-3"></i></span><div><small>全部修订</small><b class="teacher-number">{{ stats.total }}</b><span>历史完整保留</span></div></article>
+    <article class="attention"><span class="metric-icon"><i data-lucide="clock-3"></i></span><div><small>待审核</small><b class="teacher-number">{{ stats.pending }}</b><span>需要优先处理</span></div></article>
+    <article><span class="metric-icon"><i data-lucide="circle-check-big"></i></span><div><small>已确认成绩</small><b class="teacher-number">{{ stats.passed }}</b><span>最新有效审核</span></div></article>
+    <article><span class="metric-icon"><i data-lucide="rotate-ccw"></i></span><div><small>退回与撤回</small><b class="teacher-number">{{ stats.returned + stats.withdrawn }}</b><span>仍可继续修订</span></div></article>
+  </div>
+  <div class="teacher-review-layout teacher-review-layout-single">
+    <section class="teacher-surface teacher-review-queue">
+      <header class="teacher-section-title"><div><span class="eyebrow">RECENT SUBMISSIONS</span><h2>最近提交</h2><p>实验成绩只取教师最新有效人工审核，不使用 AI 或误差分。</p></div>{% if courses %}<form method="get" action="{{ url_for('teacher.export_grades') }}" class="grade-export-form"><select name="course" aria-label="选择导出班级">{% for course in courses %}<option value="{{ course.id }}">{{ course.name }}</option>{% endfor %}</select><button class="secondary-button"><i data-lucide="file-spreadsheet"></i> 导出成绩 Excel</button></form>{% endif %}</header>
+      <div class="teacher-filter-row filter-bar" data-table-filter>
+        <label><i data-lucide="search"></i><input type="search" placeholder="搜索学生、学号或实验" data-table-search></label>
+        <select data-table-status aria-label="筛选审核状态"><option value="">全部状态</option><option value="pending">待审核</option><option value="approved">已通过</option><option value="returned">已退回</option><option value="withdrawn">已撤回</option></select>
+        <button class="secondary-button" type="button" data-table-sort><i data-lucide="arrow-up-down"></i> 新到旧</button>
+      </div>
+      <div class="teacher-table-wrap"><table class="teacher-table data-table"><thead><tr><th>学生</th><th>实验</th><th>修订</th><th>状态</th><th>提交时间</th><th></th></tr></thead><tbody>
+      {% for revision, student, exp in submissions %}{% set current_review = review_map.get(revision.id) %}{% set state = 'withdrawn' if revision.status == 'withdrawn' else (current_review.decision if current_review else 'pending') %}
+        <tr class="{{ 'priority-row' if state == 'pending' }}" data-status="{{ state }}" data-sort-value="{{ revision.submitted_at.isoformat() }}"><td data-label="学生"><span class="teacher-person"><b>{{ student.name }}</b><small class="teacher-number">{{ student.id }}</small></span></td><td data-label="实验">{{ exp.title }}</td><td data-label="修订"><span class="teacher-number">R{{ revision.revision_no }}</span></td><td data-label="状态"><span class="status {{ state }}">{{ {'pending':'待审核','approved':'已通过','returned':'已退回','withdrawn':'已撤回','draft':'审核草稿'}.get(state,state) }}</span></td><td data-label="提交时间"><time class="submission-time teacher-number"><b>{{ revision.submitted_at.strftime('%m-%d') }}</b><small>{{ revision.submitted_at.strftime('%H:%M') }}</small></time></td><td data-label="操作"><a class="review-action" href="{{ url_for('teacher.review', submission_id=revision.id) }}">{{ '现在审核' if state == 'pending' else '查看审核' }} <i data-lucide="arrow-right"></i></a></td></tr>
+      {% else %}<tr><td class="empty-table" colspan="6"><span class="empty-icon"><i data-lucide="inbox"></i></span><b>审核队列已经清空</b><span>学生正式提交后会自动出现在这里。</span><a class="text-link" href="{{ url_for('teacher.analytics') }}">去学情观测台查看进度 <i data-lucide="arrow-right"></i></a></td></tr>{% endfor %}
+      </tbody></table></div>
+    </section>
+  </div>
+</section>
+{% endblock %}

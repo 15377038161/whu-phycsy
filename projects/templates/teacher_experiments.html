@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}实验管理 · 珞珈量子实验馆{% endblock %}
+{% block content %}
+<section class="teacher-v4-page teacher-experiment-page page-pad">
+  <header class="teacher-v4-heading">
+    <div><span class="eyebrow">EXPERIMENT MANAGEMENT</span><h1>实验管理</h1><p>集中维护实验内容与发布状态；列表不展示封面或其他图片。</p></div>
+    <div class="button-row"><button class="ai-button" type="button" data-open-modal="create-experiment-ai"><i data-lucide="sparkles"></i> AI 生成实验</button><a class="primary" href="{{ url_for('teacher.new_experiment') }}"><i data-lucide="plus"></i> 手动新建实验</a></div>
+  </header>
+
+  {% if active_draft %}{% set d = active_draft.definition %}
+  <article class="experiment-ai-review teacher-surface"><header><div><span class="eyebrow">AI EXPERIMENT DRAFT</span><h2>检查 AI 实验草稿</h2><p>确认后只创建可编辑实验草稿，不会直接发布给学生。</p></div><span class="status draft">待教师确认</span></header><form method="post" action="{{ url_for('teacher.confirm_ai_experiment_draft', draft_id=active_draft.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><div class="experiment-ai-fields"><label>实验代码<input name="code" value="{{ active_draft.code }}" required></label><label>实验名称<input name="title" value="{{ active_draft.title }}" required></label><label class="wide-field">实验简介<textarea name="summary" rows="3" required>{{ d.summary }}</textarea></label><label class="wide-field">实验原理<textarea name="principle" rows="5" required>{{ d.principle }}</textarea></label><label class="wide-field">仪器设备<textarea name="apparatus" rows="3">{{ d.apparatus }}</textarea></label><label class="wide-field">详细操作步骤（每行一步）<textarea name="steps" rows="9" required>{{ d.steps|join('\n') }}</textarea></label></div><footer><small><i data-lucide="shield-check"></i> AI 内容必须由教师复核；确认后进入正式实验编辑器</small><div class="button-row"><button class="secondary-button" type="submit" formaction="{{ url_for('teacher.delete_ai_experiment_draft', draft_id=active_draft.id) }}" data-confirm-submit="删除这份 AI 实验草稿？">删除草稿</button><button class="primary"><i data-lucide="check"></i> 确认并进入编辑</button></div></footer></form></article>
+  {% endif %}
+
+  <div class="teacher-surface experiment-list-summary"><div><b>实验目录</b><span><strong class="teacher-number">{{ active_count }}</strong> 个在架实验</span></div><p>编辑已发布实验时，系统会自动建立新草稿；历史提交与报告不会被覆盖。</p></div>
+
+  <div class="experiment-management-list" data-experiment-management-list>
+    {% for exp in items %}
+      {% set rows = versions[exp.id] %}
+      {% set drafts = rows|selectattr('status','equalto','draft')|list %}
+      {% set published_rows = rows|selectattr('status','equalto','published')|list %}
+      {% set draft = drafts[0] if drafts else none %}
+      {% set published = published_rows[0] if published_rows else none %}
+      {% set latest = rows[0] if rows else none %}
+      {% set display_version = draft or published or latest %}
+      {% set definition = display_version.definition if display_version else {} %}
+      <article class="experiment-management-row {{ 'is-retired' if exp.retired }}" data-experiment-id="{{ exp.id }}">
+        <div class="experiment-list-index"><span class="teacher-number">{{ '%02d'|format(loop.index) }}</span><small>{{ exp.code }}</small></div>
+        <div class="experiment-list-copy">
+          <div class="experiment-list-title"><h2>{{ exp.title }}</h2><span class="status {{ 'retired' if exp.retired else ('draft' if draft else ('published' if published else 'pending')) }}">{{ '已下架' if exp.retired else ('待发布修改' if draft and published else ('草稿' if draft else ('已发布' if published else '未配置'))) }}</span></div>
+          <p>{{ definition.get('summary') or '尚未填写实验简介。' }}</p>
+          <div class="experiment-list-meta"><span>步骤 <b class="teacher-number">{{ definition.get('steps',[])|length }}</b></span><span>候选题 <b class="teacher-number">{{ definition.get('questions',[])|length }}</b></span><span>当前内容 <b class="teacher-number">V{{ display_version.version_no if display_version else '—' }}</b></span><span>更新于 <time class="teacher-number">{{ (display_version.published_at or display_version.created_at).strftime('%Y-%m-%d %H:%M') if display_version else '—' }}</time></span></div>
+        </div>
+        <div class="experiment-row-actions" aria-label="{{ exp.title }} 操作">
+          <a class="secondary-button" href="{{ url_for('teacher.edit_experiment', experiment_id=exp.id) }}"><i data-lucide="file-pen-line"></i> 编辑实验</a>
+          <form method="post" action="{{ url_for('teacher.copy_existing_experiment', experiment_id=exp.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="secondary-button" data-confirm-submit="复制该实验为新的独立草稿？"><i data-lucide="copy"></i> 复制实验</button></form>
+          {% if draft %}<form method="post" action="{{ url_for('teacher.publish', version_id=draft.id) }}" data-confirm="发布后当前草稿将锁定并供学生使用，确认继续？"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="primary"><i data-lucide="send"></i> 发布实验</button></form>{% else %}<button class="primary" type="button" disabled title="编辑后生成草稿即可发布"><i data-lucide="send"></i> 发布实验</button>{% endif %}
+          {% if published and not exp.retired %}<form method="post" action="{{ url_for('teacher.retire', experiment_id=exp.id) }}" data-confirm="下架后学生端不再展示该实验，历史提交和报告继续保留。"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="secondary-button warning-action"><i data-lucide="archive"></i> 下架实验</button></form>{% else %}<button class="secondary-button warning-action" type="button" disabled><i data-lucide="archive"></i> {{ '已下架' if exp.retired else '下架实验' }}</button>{% endif %}
+          <form method="post" action="{{ url_for('teacher.delete_experiment', experiment_id=exp.id) }}" data-confirm="删除实验？未发布实验会彻底删除；已有发布记录的实验只会从学生端安全下架。"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="danger-button"><i data-lucide="trash-2"></i> 删除实验</button></form>
+        </div>
+        <div class="experiment-order-navigation" aria-label="调整 {{ exp.title }} 的目录位置"><form method="post" action="{{ url_for('teacher.move_experiment', experiment_id=exp.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="direction" value="up"><button type="submit" aria-label="上移 {{ exp.title }}" {{ 'disabled' if loop.first }}><i data-lucide="arrow-up"></i><span>上移</span></button></form><form method="post" action="{{ url_for('teacher.move_experiment', experiment_id=exp.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="direction" value="down"><button type="submit" aria-label="下移 {{ exp.title }}" {{ 'disabled' if loop.last }}><i data-lucide="arrow-down"></i><span>下移</span></button></form></div>
+      </article>
+    {% else %}<div class="teacher-surface teacher-empty"><i data-lucide="flask-conical"></i><b>还没有实验</b><span>使用 AI 或手动创建第一个实验草稿。</span></div>{% endfor %}
+  </div>
+</section>
+
+<div class="modal-backdrop is-hidden" data-modal="create-experiment-ai"><section class="dialog-card course-ai-dialog" role="dialog" aria-modal="true" aria-labelledby="createExperimentAiTitle"><button class="modal-close" data-close-modal aria-label="关闭"><i data-lucide="x"></i></button><span class="eyebrow">AI EXPERIMENT BUILDER</span><h2 id="createExperimentAiTitle">AI 生成实验草稿</h2><p>说出单项实验要求，或上传 PDF、DOCX、TXT、Markdown 实验材料。AI 会生成可编辑草稿，不会直接发布。</p><form method="post" action="{{ url_for('teacher.create_ai_experiment_draft') }}" enctype="multipart/form-data" data-experiment-ai-form><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="input_mode" value="text" data-experiment-input-mode><label>实验要求<div class="course-voice-input"><textarea name="experiment_prompt" rows="5" maxlength="4000" placeholder="例如：创建一个测量离子阱稳定区与荷质比的本科实验，代码 ION2，并给出详细操作步骤。" data-experiment-prompt></textarea><button type="button" class="voice-button" data-experiment-voice><i data-lucide="mic"></i><span>语音输入</span></button></div><small data-experiment-voice-state>使用语音时请允许浏览器访问麦克风。</small></label><div class="course-source-divider"><span>或者根据实验材料生成</span></div><label class="file-upload course-material-upload"><i data-lucide="files"></i><span><b>上传 PDF、DOCX、TXT 或 Markdown</b><small>最大 20 MB；扫描 PDF 请先 OCR。</small></span><input type="file" name="experiment_material" accept=".pdf,.docx,.txt,.md,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" data-experiment-material></label><div class="button-row"><button class="secondary-button" type="button" data-close-modal>取消</button><button class="ai-button" data-experiment-generate><i data-lucide="sparkles"></i> 生成可编辑实验草稿</button></div></form></section></div>
+{% endblock %}

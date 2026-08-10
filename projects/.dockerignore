@@ -1,0 +1,16 @@
+.git
+.pytest_cache
+__pycache__
+*.py[cod]
+.venv
+.env*
+dist
+outputs
+uploads
+runtime
+data.json
+PROJECT_PRESENTATION_SCRIPT.md
+实例实验报告
+source_docs
+*.tar.gz
+*.csv

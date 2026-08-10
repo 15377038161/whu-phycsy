@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>{% block title %}珞珈量子实验馆{% endblock %}</title>
+  <link rel="icon" href="data:,">
+  {# Previous UI cache marker: 20260806-ui-standard-v1. Asset URLs below use the report-fit revision. #}
+  <link rel="stylesheet" href="{{ url_for('static', filename='quantum-platform.css', v='20260807-report-fit-v1') }}">
+  <script defer src="{{ url_for('static', filename='vendor/lucide/lucide.min.js') }}"></script>
+  {% if user and user.role == 'student' %}<link rel="stylesheet" href="{{ url_for('static', filename='vendor/katex/katex.min.css') }}"><script defer src="{{ url_for('static', filename='vendor/katex/katex.min.js') }}"></script>{% endif %}
+  <script defer src="{{ url_for('static', filename='platform.js', v='20260807-report-fit-v1') }}"></script>
+  {% block head %}{% endblock %}
+</head>
+<body class="{{ 'teacher-shell' if user and user.role == 'teacher' else ('student-shell' if user else 'login-shell') }}" data-ambient="{{ 'teacher' if user and user.role == 'teacher' else 'student' }}" data-static-base="{{ url_for('static', filename='') }}" data-csrf-token="{{ csrf_token() }}" data-student-ai-url="{{ url_for('api.student_assistant') }}" data-teacher-ai-url="{{ url_for('api.teacher_assistant') }}" data-teacher-analytics-url="{{ url_for('api.teacher_analytics') }}" data-fitting-validate-url="{{ url_for('api.fitting_validate') }}">
+  <div class="ambient-scene" aria-hidden="true"><div class="ambient-aurora"></div><div class="quantum-orbit orbit-one"></div><div class="quantum-orbit orbit-two"></div><div class="quantum-field"></div><div class="petal-field"></div></div>
+  {% if user %}
+  <header class="site-header">
+    <a class="brand" href="{{ url_for('teacher.dashboard' if user.role == 'teacher' else 'student.home') }}">
+      <img class="brand-signature" src="{{ url_for('static', filename='images/brand/whu-signature.png') }}" alt="武汉大学">
+      <i class="brand-divider" aria-hidden="true"></i>
+      <span class="brand-platform"><b>珞珈量子实验馆</b><small>QUANTUM LAB</small></span>
+    </a>
+    <nav class="primary-nav" aria-label="主导航">
+      {% if user.role == 'teacher' %}
+        <a class="{{ 'active' if request.endpoint in ('teacher.dashboard','teacher.analytics','teacher.review') }}" href="{{ url_for('teacher.dashboard') }}">审核</a>
+        <a class="{{ 'active' if request.endpoint in ('teacher.experiments','teacher.new_experiment','teacher.edit_experiment') }}" href="{{ url_for('teacher.experiments') }}">实验管理</a>
+        <a class="{{ 'active' if request.endpoint == 'teacher.students' }}" href="{{ url_for('teacher.students') }}">学生管理</a>
+      {% else %}
+        <a class="{{ 'active' if request.endpoint in ('student.home','student.experiment') }}" href="{{ url_for('student.home') }}">实验探索</a>
+        <a class="{{ 'active' if request.endpoint == 'student.records' }}" href="{{ url_for('student.records') }}">我的实验</a>
+        <a class="{{ 'active' if request.endpoint in ('student.achievements','student.report') }}" href="{{ url_for('student.achievements') }}">报告与荣誉</a>
+      {% endif %}
+    </nav>
+    <div class="user-actions">
+      <span class="role-chip">{{ '教师' if user.role == 'teacher' else '学生' }}</span>
+      <span>{{ user.name }}</span>
+      <button class="icon-button" type="button" title="修改密码" aria-label="修改密码" data-open-modal="account-password"><i data-lucide="key-round"></i></button>
+      <form method="post" action="{{ url_for('auth.logout') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="icon-button" title="退出登录" aria-label="退出登录"><i data-lucide="log-out"></i></button></form>
+    </div>
+  </header>
+  {% endif %}
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}<div class="flash-stack" aria-live="polite">{% for category, message in messages %}<div class="flash {{ category }}"><i data-lucide="{{ 'circle-alert' if category == 'error' else 'circle-check' }}"></i><span>{{ message }}</span></div>{% endfor %}</div>{% endif %}
+  {% endwith %}
+  <main>{% block content %}{% endblock %}</main>
+  {% if user %}<footer><span>武汉大学量子实验教学平台</span><span>实验数据全程留痕 · 提交修订不可覆盖</span></footer>{% endif %}
+  {% if user %}<div class="modal-backdrop is-hidden" data-modal="account-password"><section class="dialog-card" role="dialog" aria-modal="true" aria-labelledby="accountPasswordTitle"><button class="modal-close" data-close-modal aria-label="关闭"><i data-lucide="x"></i></button><span class="eyebrow">ACCOUNT SECURITY</span><h2 id="accountPasswordTitle">修改我的密码</h2><p>修改成功后会退出当前会话，请使用新密码重新登录。</p><form method="post" action="{{ url_for('auth.account_password') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><label>当前密码<input name="current_password" type="password" autocomplete="current-password" required></label><label>新密码<input name="new_password" type="password" autocomplete="new-password" minlength="8" required></label><label>确认新密码<input name="confirm_password" type="password" autocomplete="new-password" minlength="8" required></label><div class="button-row"><button class="secondary-button" type="button" data-close-modal>取消</button><button class="primary">更新密码</button></div></form></section></div>{% endif %}
+  {% if user and user.role == 'student' %}
+  <button class="student-ai-launcher" type="button" data-open-student-ai aria-label="打开 AI 答疑助手"><span><i data-lucide="sparkles"></i></span><b>AI 答疑</b></button>
+  <aside class="student-ai-panel" data-student-ai aria-hidden="true" aria-label="AI 答疑助手">
+    <header><span><i data-lucide="bot"></i></span><div><b>珞珈 AI 助教</b><small>原理与步骤将逐字流式显示</small></div><button type="button" data-close-student-ai aria-label="关闭 AI 助手"><i data-lucide="x"></i></button></header>
+    <div class="student-ai-messages" data-ai-messages aria-live="polite"><div class="ai-bubble assistant"><b>你好，我是珞珈 AI 助教。</b><p>我只解释当前实验原理，或在你忘记时提醒已发布的操作步骤。</p></div></div>
+    <div class="student-ai-prompts"><button type="button" data-ai-prompt="请用容易理解的方式解释当前实验原理。">解释当前原理</button><button type="button" data-ai-prompt="请按已发布内容提醒我当前实验的操作步骤。">提醒操作步骤</button></div>
+    <form data-student-ai-form><label for="studentAiQuestion">向 AI 助教提问</label><div><textarea id="studentAiQuestion" data-ai-question rows="2" maxlength="800" placeholder="例如：请解释这个实验的核心原理。" required></textarea><button type="submit" aria-label="发送问题"><i data-lucide="send"></i></button></div><small>禁止查询成绩、他人信息、题目答案和实验具体数据；实验安全与最终要求以教师说明为准。</small></form>
+  </aside>
+  {% endif %}
+  {% if user and user.role == 'teacher' %}
+  <button class="student-ai-launcher teacher-ai-launcher" type="button" data-teacher-ai-launcher data-open-teacher-ai aria-label="打开 AI 学情助手"><span><i data-lucide="sparkles"></i></span><b>AI 学情</b></button>
+  <aside class="teacher-ai-panel" data-teacher-ai aria-hidden="true" aria-label="教师 AI 学情助手">
+    <header><span><i data-lucide="sparkles"></i></span><div><b>AI 学情助手</b><small>仅使用当前教师课程的服务器实时数据</small></div><button type="button" data-close-teacher-ai aria-label="关闭 AI 学情助手"><i data-lucide="x"></i></button></header>
+    <div class="teacher-ai-scope"><label for="teacherAiCourse">分析课程</label><select id="teacherAiCourse" data-teacher-ai-course aria-label="选择分析课程"><option value="">正在读取课程…</option></select><small data-teacher-ai-sync>数据将在提问时从服务器重新生成</small></div>
+    <div class="teacher-ai-prompts"><button type="button" data-teacher-ai-prompt="哪些学生需要优先提醒？请按原因分组。">需要提醒的学生</button><button type="button" data-teacher-ai-prompt="哪项任务的卡点最多？请给出数据证据。">任务卡点</button><button type="button" data-teacher-ai-prompt="总结最近七天班级学习变化，并给出下周建议。">本周变化</button></div>
+    <div class="teacher-ai-messages" data-teacher-ai-messages aria-live="polite"><div class="ai-bubble assistant ai-rendered"><strong>你好，我是教师学情助手。</strong><p>我会基于课程任务、完成状态和提交时间回答，并给出数据证据；不会读取内部评语或学生报告正文。</p></div></div>
+    <form data-teacher-ai-form><label for="teacherAiQuestion">询问当前课程学情</label><div><textarea id="teacherAiQuestion" data-teacher-ai-question rows="2" maxlength="800" placeholder="例如：哪些学生已完成实验但还没有提交报告？" required></textarea><button type="submit" aria-label="发送问题"><i data-lucide="send"></i></button></div><small>AI 只辅助教学判断，所有名单与数据以观测台为准。</small></form>
+  </aside>
+  {% endif %}
+  {% block scripts %}{% endblock %}
+</body>
+</html>

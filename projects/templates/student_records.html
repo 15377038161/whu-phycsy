@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}我的实验 · 珞珈量子实验馆{% endblock %}
+{% block content %}
+<header class="page-hero compact page-pad"><div><span class="eyebrow">MY EXPERIMENTS</span><h1>我的实验</h1><p>集中查看全部实验的学习进度、预习题成绩和自己的原始数据入口；教师审核与评分不会在此展示。</p></div></header>
+<section class="page-pad student-progress-page" data-student-records>
+  <div class="stats-row">
+    <article><small>全部实验</small><b>{{ progress_items|length }}</b></article>
+    <article><small>已完成实验</small><b>{{ completed_count }}</b></article>
+    <article><small>报告修订</small><b>{{ revision_count }}</b></article>
+  </div>
+  <header class="student-progress-heading"><div><h2>实验进度</h2><p>完成预习、实验、拟合并正式提交报告后，实验标记为已完成。</p></div><div class="record-filter-group" role="group" aria-label="筛选实验状态"><button class="active" type="button" data-record-filter="all">全部 <span>{{ progress_items|length }}</span></button><button type="button" data-record-filter="completed">已完成 <span>{{ completed_count }}</span></button><button type="button" data-record-filter="incomplete">未完成 <span>{{ progress_items|length - completed_count }}</span></button></div></header>
+  <div class="student-progress-list" data-record-list>
+    {% for item in progress_items %}<article class="student-progress-card" data-record-state="{{ item.state }}">
+      <div class="student-progress-number">{{ '%02d'|format(loop.index) }}</div>
+      <div class="student-progress-copy"><h3>{{ item.exp.title }}</h3><p>版本 V{{ item.version.version_no }}{% if item.revision %} · 最近修订 R{{ item.revision.revision_no }}{% endif %}</p><div class="student-progress-track" aria-label="学习进度 {{ item.progress }}%"><i style="width:{{ item.progress }}%"></i></div></div>
+      <div class="student-progress-meta"><span class="status {{ item.state }}">{{ item.label }}</span><small>{% if item.quiz_score is not none %}预习题 {{ item.quiz_score }}/100{% else %}尚未完成预习{% endif %}</small></div>
+      <a class="text-link" href="{{ url_for('student.experiment', code=item.exp.code) }}">{{ '查看实验' if item.state == 'completed' else '继续实验' }} <i data-lucide="arrow-right"></i></a>
+    </article>{% endfor %}
+  </div>
+  <p class="empty-state is-hidden" data-record-empty>该筛选下暂无实验。</p>
+</section>
+{% endblock %}

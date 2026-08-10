@@ -1,0 +1,37 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-wuda_quantum}
+      POSTGRES_USER: ${POSTGRES_USER:-wuda}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env.production}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-wuda} -d ${POSTGRES_DB:-wuda_quantum}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+  app:
+    build:
+      context: .
+      args:
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.org/simple}
+        PIP_DEFAULT_TIMEOUT: ${PIP_DEFAULT_TIMEOUT:-120}
+    env_file: .env.production
+    environment:
+      APP_ENV: ${APP_ENV:-production}
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-wuda}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-wuda_quantum}
+      DATA_DIR: /data
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:5000:5000"
+    volumes:
+      - app_files:/data
+    restart: unless-stopped
+volumes:
+  postgres_data:
+  app_files:

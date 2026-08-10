@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}{{ exp.title }} · {{ '教师内部报告' if teacher_view else '正式实验报告' }}{% endblock %}
+{% macro inline_runs(block) -%}
+  {% if block.runs %}{% for run in block.runs %}{% set marks=run.marks or [] %}{% if 'bold' in marks %}<strong>{% endif %}{% if 'italic' in marks %}<em>{% endif %}{% if 'underline' in marks %}<u>{% endif %}{% if 'superscript' in marks %}<sup>{% endif %}{% if 'subscript' in marks %}<sub>{% endif %}{{ run.text }}{% if 'subscript' in marks %}</sub>{% endif %}{% if 'superscript' in marks %}</sup>{% endif %}{% if 'underline' in marks %}</u>{% endif %}{% if 'italic' in marks %}</em>{% endif %}{% if 'bold' in marks %}</strong>{% endif %}{% endfor %}{% else %}{{ block.text }}{% endif %}
+{%- endmacro %}
+{% macro render_blocks(blocks) -%}
+  {% for block in blocks %}
+    {% if block.type in ('paragraph','heading','quote') %}<{{ 'h4' if block.type=='heading' else ('blockquote' if block.type=='quote' else 'p') }} style="text-align:{{ block.alignment or 'justify' }}">{{ inline_runs(block) }}</{{ 'h4' if block.type=='heading' else ('blockquote' if block.type=='quote' else 'p') }}>
+    {% elif block.type=='formula' %}<figure class="final-formula"><div data-academic-formula>{{ block.latex }}</div>{% if block.caption %}<figcaption>{{ block.caption }}</figcaption>{% endif %}</figure>
+    {% elif block.type=='list' %}<{{ 'ol' if block.ordered else 'ul' }}>{% for item in block['items'] %}<li>{{ item }}</li>{% endfor %}</{{ 'ol' if block.ordered else 'ul' }}>
+    {% elif block.type=='table' %}<figure class="final-table"><table><tbody>{% for row in block.rows %}{% set header_row=loop.first %}<tr>{% for cell in row %}{% if header_row %}<th>{{ cell }}</th>{% else %}<td>{{ cell }}</td>{% endif %}{% endfor %}</tr>{% endfor %}</tbody></table>{% if block.caption %}<figcaption>{{ block.caption }}</figcaption>{% endif %}</figure>
+    {% elif block.type=='image' %}<figure class="final-image {{ block.alignment or 'center' }}" style="--image-width:{{ block.width or 80 }}%"><img src="{{ url_for('auth.media', sha256=block.asset_hash) }}" alt="{{ block.caption or '实验图片' }}">{% if block.caption %}<figcaption>{{ block.caption }}</figcaption>{% endif %}</figure>{% endif %}
+  {% endfor %}
+{%- endmacro %}
+{% block content %}
+<header class="report-toolbar page-pad"><div><span class="eyebrow">{{ 'INTERNAL REVIEW COPY' if teacher_view else 'FORMAL EXPERIMENT REPORT' }}</span><h1>{{ exp.title }} · {{ '教师内部报告' if teacher_view else '正式实验报告' }}</h1><p>{{ '仅教师可见 · ' if teacher_view else '' }}修订 R{{ revision.revision_no }} · 版本 V{{ version.version_no }} · {{ revision.submitted_at.strftime('%Y-%m-%d') }}</p></div><div class="button-row">{% if not teacher_view %}<form method="post" action="{{ url_for('student.copy_submission_to_draft', submission_id=revision.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="secondary-button"><i data-lucide="copy-plus"></i> 复制为新修订</button></form>{% endif %}<a class="secondary-button" href="{{ url_for('teacher.export_internal_report' if teacher_view else 'student.export_report', submission_id=revision.id, format='docx') }}"><i data-lucide="file-down"></i> 导出 Word</a><a class="primary" href="{{ url_for('teacher.export_internal_report' if teacher_view else 'student.export_report', submission_id=revision.id, format='pdf') }}"><i data-lucide="file-down"></i> 导出 PDF</a></div></header>
+{% if teacher_view %}<nav class="teacher-mobile-review-nav page-pad" aria-label="报告审核快捷导航"><a href="#teacherReviewPanel"><i data-lucide="badge-check"></i> 评分审核</a><a href="#reportContent"><i data-lucide="file-text"></i> 报告正文</a></nav>{% endif %}
+<div class="final-report-layout page-pad {{ 'teacher-report-layout' if teacher_view }}">
+  <article class="final-academic-report" id="reportContent">
+    <header class="final-running-head"><span>{{ report_doc.title_zh }}</span><span>1</span></header>
+    <h1>{{ report_doc.title_zh }}</h1><p class="final-author">{{ report_doc.author_name }}　({{ report_doc.student_id }})</p><p class="final-affiliation">{{ report_doc.affiliation_zh }}</p>
+    <p class="final-abstract"><b>摘要：</b>{{ report_doc.abstract_zh }}</p><p class="final-keywords"><b>关键词：</b>{{ report_doc.keywords_zh }}</p>
+    <h2>{{ report_doc.title_en }}</h2><p class="final-author english">{{ report_doc.author_name }}　({{ report_doc.student_id }})</p><p class="final-affiliation english">{{ report_doc.affiliation_en }}</p>
+    <p class="final-abstract english"><b>Abstract: </b>{{ report_doc.abstract_en }}</p><p class="final-keywords english"><b>Keywords: </b>{{ report_doc.keywords_en }}</p>
+    {% for section in report_doc.sections %}<section><h3>{{ loop.index }}　{{ section.title }}</h3>{{ render_blocks(section.blocks) }}</section>{% endfor %}
+  </article>
+  <aside class="final-report-side" id="teacherReviewPanel">
+    {% if teacher_view %}<div class="private-label"><i data-lucide="lock-keyhole"></i> 仅教师可见</div><h2>教师人工审核</h2><div class="revision-audit"><small>当前修订</small><b class="teacher-number">R{{ revision.revision_no }}</b><span class="status {{ review.decision if review else 'pending' }}">{{ {'approved':'已评分','returned':'已退回','draft':'审核草稿'}.get(review.decision,'待审核') if review else '待审核' }}</span></div><form method="post" class="private-review-form"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><label>最终实验成绩<input class="teacher-number" name="private_score" type="number" inputmode="numeric" min="0" max="100" required value="{{ review.private_score if review else '' }}"></label><label>审核决定<select name="decision"><option value="approved" {{ 'selected' if not review or review.decision == 'approved' }}>确认成绩</option><option value="returned" {{ 'selected' if review and review.decision == 'returned' }}>退回修改</option><option value="draft" {{ 'selected' if review and review.decision == 'draft' }}>保存审核草稿</option></select></label><label class="private-review-comment">内部评语<textarea name="private_comment" rows="8">{{ review.private_comment if review else '' }}</textarea></label><button class="primary wide">保存人工成绩与审核</button></form>
+    {% else %}<h2>报告状态</h2><div class="report-status-card"><span class="status {{ revision.status }}">{{ '已撤回' if revision.status == 'withdrawn' else ('已由新修订替代' if revision.status == 'superseded' else '已提交') }}</span><p>报告修订 R{{ revision.revision_no }}</p><small>如需修改，请复制为新草稿；当前修订始终保持不变。</small></div>{% endif %}
+  </aside>
+</div>
+{% endblock %}
