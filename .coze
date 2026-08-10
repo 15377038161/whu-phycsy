@@ -8,6 +8,10 @@ version = "0.0.32"
 [preview]
 preview_enable = "enabled"
 
+[dev]
+build = ["bash", "projects/scripts/build.sh"]
+run = ["bash", "projects/scripts/run.sh"]
+
 [deploy]
 build = ["bash", "projects/scripts/setup.sh"]
 run = ["bash", "projects/scripts/http_run.sh", "-p", "5000"]
