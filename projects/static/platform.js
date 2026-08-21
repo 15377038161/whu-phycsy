@@ -24,12 +24,8 @@ function setupAcademicFormulas(){
   $$('[data-academic-formula]').forEach(element=>{const source=element.textContent.trim();if(!source||!window.katex)return;try{element.innerHTML=window.katex.renderToString(source,{throwOnError:false,displayMode:true,strict:"ignore",trust:false})}catch{element.textContent=source}})
 }
 
-function openModal(name){const modal=document.querySelector(`[data-modal="${name}"]`);if(!modal)return;modal._previousFocus=document.activeElement;modal.classList.remove("is-hidden");document.body.style.overflow="hidden";refreshIcons();const target=modal.querySelector("[data-autofocus]")||modal.querySelector(".modal-close");if(target)target.focus({preventScroll:true})}
-function closeModal(modal){if(!modal)return;modal.classList.add("is-hidden");if(!document.querySelector(".modal-backdrop:not(.is-hidden)"))document.body.style.overflow="";const previous=modal._previousFocus;modal._previousFocus=null;if(previous&&typeof previous.focus==="function")previous.focus({preventScroll:true})}
-
-function setupAutoOpenModal(){
-  const modal=$("[data-auto-open-modal]");if(!modal)return;openModal(modal.dataset.modal);history.replaceState(null,"",window.location.pathname);
-}
+function openModal(name){const modal=document.querySelector(`[data-modal="${name}"]`);if(!modal)return;modal.classList.remove("is-hidden");document.body.style.overflow="hidden";refreshIcons()}
+function closeModal(modal){if(!modal)return;modal.classList.add("is-hidden");if(!document.querySelector(".modal-backdrop:not(.is-hidden)"))document.body.style.overflow=""}
 
 function activateTab(name){
   const tabs=$("[data-tabs]");if(!tabs)return;
@@ -364,7 +360,6 @@ function showConfirm(form,message,submitter){
 }
 
 document.addEventListener("click",event=>{
-  const backdrop=event.target.closest(".modal-backdrop");if(backdrop&&event.target===backdrop&&!backdrop.classList.contains("is-hidden")){closeModal(backdrop);return}
   const confirmSubmit=event.target.closest("[data-confirm-submit]");if(confirmSubmit){event.preventDefault();showConfirm(confirmSubmit.form,confirmSubmit.dataset.confirmSubmit,confirmSubmit);return}
   const open=event.target.closest("[data-open-modal]");if(open){event.preventDefault();openModal(open.dataset.openModal)}
   const close=event.target.closest("[data-close-modal]");if(close){event.preventDefault();closeModal(close.closest(".modal-backdrop"))}
@@ -375,6 +370,6 @@ document.addEventListener("submit",event=>{const message=event.target.dataset.co
 document.addEventListener("keydown",event=>{if(event.key==="Escape")closeModal(document.querySelector(".modal-backdrop:not(.is-hidden)"))});
 
 document.addEventListener("DOMContentLoaded",()=>{
-  setupAmbient();setupExperimentGallery();setupAchievements();setupAutoOpenModal();setupWorkspaceStepNavigation();setupStudentRecords();setupQuiz();setupFit();setupFilters();setupExperimentDraftAssistant();setupEditor();setupQuestionManager();setupReportEditor();setupReport();setupPrincipleFormula();setupAcademicFormulas();setupStudentAssistant();setupTeacherAssistant();setupTeacherAnalytics();refreshIcons();
+  setupAmbient();setupExperimentGallery();setupAchievements();setupWorkspaceStepNavigation();setupStudentRecords();setupQuiz();setupFit();setupFilters();setupExperimentDraftAssistant();setupEditor();setupQuestionManager();setupReportEditor();setupReport();setupPrincipleFormula();setupAcademicFormulas();setupStudentAssistant();setupTeacherAssistant();setupTeacherAnalytics();refreshIcons();
   setTimeout(()=>$$('.flash').forEach(item=>item.remove()),5000);
 });

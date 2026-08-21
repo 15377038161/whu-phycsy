@@ -103,8 +103,8 @@ def test_student_hall_lists_every_published_teacher_module(app, client):
         session.add(extra); session.flush()
         session.add(ExperimentVersion(experiment_id=extra.id, version_no=1, status="published", definition=dict(source.definition)))
     page = login(client).get_data(as_text=True)
-    assert "选择一关开始实验" in page and "无需按顺序，任选一关即可开始挑战" in page and "6 个实验展厅" not in page
-    assert "教师新增量子模块" in page and 'data-experiment-gallery' in page and "第 6 关" in page
+    assert "<h2>实验展厅</h2>" in page and "6 个实验展厅" not in page
+    assert "教师新增量子模块" in page and 'data-experiment-gallery' in page
     assert 'data-gallery-prev' in page and 'data-gallery-next' in page
     assert page.count('class="experiment-display-card') == 6
     assert client.get("/student/experiment/NEW").status_code == 200
@@ -180,15 +180,13 @@ def _submit(client, code="ION", request_id=None, value="1.04"):
     return client.post(f"/student/experiment/{code}/submit", data={"request_id": request_id or str(uuid.uuid4()), "abstract": "完整摘要", "principle": "完整实验原理", "raw_data": "1,2\n2,4", "discussion": "误差来自读数和标定。", "conclusion": "完成实验并得到关键结果。", "result_value": value, "steps_complete": "yes", "fit_result": json.dumps({"code": "", "formula": "y=a*x+b", "initial_parameters": {"a": 1}, "final_parameters": {"a": 2}, "metrics": {"r2": .99}})}, follow_redirects=True)
 
 
-def test_submit_idempotency_records_deterministic_accuracy_and_teacher_review_stays_private(app, client):
+def test_submit_idempotency_has_no_machine_grade_and_teacher_review_stays_private(app, client):
     login(client); _answer_quiz(app, client)
     request_id = str(uuid.uuid4()); first = _submit(client, request_id=request_id); second = _submit(client, request_id=request_id)
     assert "学生端仅展示预习题成绩" in first.get_data(as_text=True)
     with app.app_context():
         rows = db_session().scalars(select(SubmissionRevision)).all()
-        # 同一次 request_id 仅产生一条修订；确定性准确度评分在提交时自动落库（仅教师端可见）
-        assert len(rows) == 1 and rows[0].evaluation_id is None
-        assert abs(rows[0].relative_error - 0.04) < 1e-6 and rows[0].deterministic_score == 100
+        assert len(rows) == 1 and rows[0].deterministic_score == 0 and rows[0].relative_error == 0 and rows[0].evaluation_id is None
         revision_id = rows[0].id
     api = client.get("/api/student/submissions").get_json()[0]
     assert set(api).isdisjoint({"private_score", "private_comment", "teacher_score", "deterministic_score", "relative_error", "ai_score", "ai_feedback"})
@@ -197,52 +195,6 @@ def test_submit_idempotency_records_deterministic_accuracy_and_teacher_review_st
     with app.app_context():
         review = db_session().scalar(select(Review).where(Review.submission_id == revision_id))
         assert review and review.private_score == 91
-
-
-def test_accuracy_grade_thresholds_are_deterministic_and_edge_safe():
-    from platform_app.services.submissions import accuracy_grade
-    # 相对误差 = |实验值-参考值|/|参考值|；阈值 ≤5%→100，≤7%→90，≤10%→85，≤15%→80，其余 70
-    assert accuracy_grade(1.0, 1.04) == (pytest.approx(0.04), 100)
-    assert accuracy_grade(1.0, 1.06) == (pytest.approx(0.06), 90)
-    assert accuracy_grade(1.0, 1.09) == (pytest.approx(0.09), 85)
-    assert accuracy_grade(1.0, 1.12) == (pytest.approx(0.12), 80)
-    assert accuracy_grade(1.0, 1.20) == (pytest.approx(0.20), 70)
-    assert accuracy_grade(1.0, 0.96) == (pytest.approx(0.04), 100)  # 负向误差同阈值
-    # 确定性：同输入必同输出
-    assert accuracy_grade(2.87, 2.99) == accuracy_grade(2.87, 2.99)
-    # 参考值缺失 / 非数值 / 零（且结果非零）时不给出建议分
-    assert accuracy_grade(None, 1.0) is None
-    assert accuracy_grade("not-a-number", 1.0) is None
-    assert accuracy_grade(0, 1.0)[1] == 70
-
-
-def test_student_home_certificate_modal_autoopens_only_when_passed_level_unlocked(app, client):
-    login(client); _answer_quiz(app, client)
-    before = login(client).get_data(as_text=True)
-    assert "data-auto-open-modal" not in before and "实验通关纪念证书" not in before
-    submitted = _submit(client)
-    assert submitted.request.path == "/student/home" and "certificate=ION" in submitted.request.url
-    home = submitted.get_data(as_text=True)
-    assert "实验通关纪念证书" in home and "data-auto-open-modal" in home and 'data-modal="level-certificate"' in home
-    assert "不代表教师审核通过" in home and "继续挑战下一关" in home
-
-
-def test_teacher_review_page_shows_automatic_accuracy_and_prefills_manual_score(app, client):
-    login(client); _answer_quiz(app, client); _submit(client)
-    with app.app_context():
-        revision = db_session().scalar(select(SubmissionRevision))
-        revision_id = revision.id
-    teacher = app.test_client(); login(teacher, "admin", "admin123")
-    page = teacher.get(f"/teacher/submission/{revision_id}").get_data(as_text=True)
-    assert "自动准确度评分" in page and "自动准确度建议分" in page and "4.00%" in page
-    assert 'name="private_score"' in page and 'value="100"' in page
-    teacher.post(f"/teacher/submission/{revision_id}", data={"private_score": 88, "private_comment": "复核"})
-    page = teacher.get(f"/teacher/submission/{revision_id}").get_data(as_text=True)
-    assert 'value="88"' in page
-    # 学生端报告页不得出现自动准确度评分
-    student_report = client.get(f"/student/report/{revision_id}").get_data(as_text=True)
-    assert "正式实验报告" in student_report  # 确认命中的是真实报告页而非 404
-    assert "自动准确度评分" not in student_report and "自动准确度建议分" not in student_report
 
 
 def test_identical_content_keeps_fingerprint_without_creating_ai_evaluation(app, client):
@@ -484,7 +436,7 @@ def test_platform_ui_uses_one_typography_icon_and_page_scale_standard():
     templates = "\n".join(path.read_text(encoding="utf-8") for path in (root / "templates").glob("*.html"))
     for token in ("--ui-font-body", "--ui-font-display", "--ui-title-page", "--ui-text-body", "--ui-icon-control", "--ui-content-wide"):
         assert token in css
-    assert "1328 px" in guide and "42 px" in guide and "16 × 16 px" in guide
+    assert "1328 px" in guide and "40 px" in guide and "16 × 16 px" in guide
     assert "font-size:" not in templates and "font-family:" not in templates
     assert "20260806-ui-standard-v1" in (root / "templates" / "base.html").read_text(encoding="utf-8")
 

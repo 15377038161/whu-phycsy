@@ -6,13 +6,6 @@
 
 本平台是武汉大学量子实验教学的核心系统，提供五项正式实验（离子阱、量子密钥分发、量子纠缠、金刚石量子计算机、单像素光子成像）的完整教学流程：预习题库、实验操作、数据拟合、报告编辑与教师审核。学生端包含实验探索、我的实验、报告与荣誉；教师端包含审核、实验管理、学生管理和学情观测台。
 
-### 工作区结构（多层）
-
-- **工作区根目录**：`/workspace/projects/`（平台入口，根 `.coze` 在此）
-- **技术项目根目录**：`/workspace/projects/projects/`（源码、脚本、配置均在此目录下）
-- 根 `.coze` 通过 `[subprojects].path = ["projects"]` 调度子项目；子项目 `.coze` 记录自身的 `[dev]`/`[deploy]` 配置
-- 后续文档中的路径（如 `app.py`、`scripts/`）均相对于技术项目根目录
-
 ## 技术栈
 
 - **后端**：Python 3.11 + Flask 3.0 + SQLAlchemy 2.0
@@ -125,8 +118,6 @@ docker-compose up -d
 8. **保留资源**：不得删除 `source_docs/`、`static/fonts/simhei.ttf` 或报告依赖
 9. **交付包清洁**：`.env.local`、Key CSV、真实报告、旧数据和上传文件不得进入交付包
 10. **验证必做**：修改后至少运行 `python scripts/verify_project.py` 和 `pytest -q`
-11. **自动准确度评分仅教师可见**：提交时由 `accuracy_grade()`（`platform_app/services/submissions.py`）确定性计算相对误差与建议分并写入 `relative_error`/`deterministic_score`；它不进入任何学生响应，也不解锁证书，仅供教师审核页展示与预填人工评分
-12. **学生首页自由关卡**：首页关卡卡片动态列出全部发布实验，`第 N 关` 由排序字段决定、无顺序限制；通关状态与证书/纪念牌解锁只看最新 `submitted` 修订，正式提交后首页自动弹出通关纪念证书
 
 ## 常见问题和预防
 
@@ -136,13 +127,6 @@ docker-compose up -d
 - 开发环境未设置 `DATABASE_URL` 且无 `PGDATABASE_URL` 时使用 `runtime/platform.db`（SQLite）
 - 生产环境 `APP_ENV=production` 时必须使用 PostgreSQL，否则启动失败
 - 数据库初始化：`python scripts/init_database.py`
-
-### 自动准确度评分（accuracy_grade）
-
-- 规则：相对误差 = |结果 − 冻结参考值| / |参考值|；≤5%→100、≤7%→90、≤10%→85、≤15%→80、否则→70；参考值为 0 且结果不为 0 时按截止误差计 70；参考值无效/缺失返回 `None`（写 0）
-- 参考值取发布版本冻结的 `version.definition["reference_value"]`，不取教师端实时定义
-- 结果只写入 `SubmissionRevision.relative_error`/`deterministic_score`，仅教师审核页（`templates/report.html` 的 `teacher_view` 分支）展示，并把建议分预填到人工评分输入框；学生端任何页面/接口不得出现
-- 与证书解锁无关：解锁只看最新 `submitted` 修订，不看分数
 
 ### 预览端口
 
