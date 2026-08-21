@@ -48,6 +48,18 @@ function setupStudentRecords(){
   controls.forEach(control=>control.addEventListener("click",()=>{const filter=control.dataset.recordFilter;controls.forEach(item=>item.classList.toggle("active",item===control));let visible=0;rows.forEach(row=>{const matches=filter==="all"||row.dataset.recordState===filter;row.hidden=!matches;if(matches)visible++});empty?.classList.toggle("is-hidden",visible>0)}));
 }
 
+function setupAutoOpenModal(){
+  const backdrop=$("[data-auto-open-modal]");if(!backdrop)return;
+  const dialog=$(".dialog-card",backdrop);const previouslyFocused=document.activeElement;
+  const restoreFocus=()=>{(previouslyFocused&&previouslyFocused.focus?previouslyFocused:document.body).focus?.()};
+  const observer=new MutationObserver(()=>{if(backdrop.classList.contains("is-hidden")){observer.disconnect();restoreFocus()}});
+  observer.observe(backdrop,{attributes:true,attributeFilter:["class"]});
+  backdrop.addEventListener("click",event=>{if(event.target===backdrop)closeModal(backdrop)});
+  if("replaceState" in history){const url=new URL(window.location.href);url.searchParams.delete(backdrop.dataset.autoOpenModal==="certificate"?"certificate":backdrop.dataset.autoOpenModal);history.replaceState(null,"",url.pathname+url.search)}
+  openModal(backdrop.dataset.modal);
+  dialog?.focus();
+}
+
 function setupQuiz(){
   const form=$("[data-quiz-form]");if(!form)return;
   const questions=$$("[data-quiz-question]",form),position=$("[data-quiz-position]",form),bar=$("[data-quiz-progress]",form),prev=$("[data-quiz-prev]",form),next=$("[data-quiz-next]",form),submit=$("[data-quiz-submit]",form);let index=0;
@@ -370,6 +382,6 @@ document.addEventListener("submit",event=>{const message=event.target.dataset.co
 document.addEventListener("keydown",event=>{if(event.key==="Escape")closeModal(document.querySelector(".modal-backdrop:not(.is-hidden)"))});
 
 document.addEventListener("DOMContentLoaded",()=>{
-  setupAmbient();setupExperimentGallery();setupAchievements();setupWorkspaceStepNavigation();setupStudentRecords();setupQuiz();setupFit();setupFilters();setupExperimentDraftAssistant();setupEditor();setupQuestionManager();setupReportEditor();setupReport();setupPrincipleFormula();setupAcademicFormulas();setupStudentAssistant();setupTeacherAssistant();setupTeacherAnalytics();refreshIcons();
+  setupAmbient();setupExperimentGallery();setupAchievements();setupAutoOpenModal();setupWorkspaceStepNavigation();setupStudentRecords();setupQuiz();setupFit();setupFilters();setupExperimentDraftAssistant();setupEditor();setupQuestionManager();setupReportEditor();setupReport();setupPrincipleFormula();setupAcademicFormulas();setupStudentAssistant();setupTeacherAssistant();setupTeacherAnalytics();refreshIcons();
   setTimeout(()=>$$('.flash').forEach(item=>item.remove()),5000);
 });

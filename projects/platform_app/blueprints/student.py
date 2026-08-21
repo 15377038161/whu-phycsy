@@ -231,7 +231,10 @@ def home():
             cover_assets[version.id] = db_session().get(FileAsset, cover_hash)
     featured, featured_kicker, featured_action = _current_experiment(items, activity_at)
     completed_experiment_count = sum(1 for revision in latest_by_experiment.values() if revision.status == "submitted")
-    return render_template("student_home.html", user=user, course=course, items=items, quiz_score_map=quiz_score_map, completed_experiment_count=completed_experiment_count, submission_count=len(submission_rows), cover_assets=cover_assets, featured=featured, featured_kicker=featured_kicker, featured_action=featured_action, **_achievement_context(items, user.id))
+    achievements_context = _achievement_context(items, user.id)
+    certificate_code = request.args.get("certificate", "").strip()
+    certificate_item = next((item for item in achievements_context["achievement_items"] if item["unlocked"] and item["code"].upper() == certificate_code.upper()), None) if certificate_code else None
+    return render_template("student_home.html", user=user, course=course, items=items, quiz_score_map=quiz_score_map, completed_experiment_count=completed_experiment_count, submission_count=len(submission_rows), cover_assets=cover_assets, featured=featured, featured_kicker=featured_kicker, featured_action=featured_action, certificate_item=certificate_item, **achievements_context)
 
 
 @bp.get("/records")
@@ -490,7 +493,7 @@ def submit_experiment(code):
                     locked.status = "locked"
                     locked.updated_at = datetime.now(timezone.utc)
         flash("提交成功。报告修订已保存；学生端仅展示预习题成绩。", "success")
-        return redirect(url_for("student.home"))
+        return redirect(url_for("student.home", certificate=code))
     except (ValueError, TypeError, json.JSONDecodeError) as exc:
         flash(str(exc), "error")
         return redirect(url_for("student.experiment", code=code))

@@ -11,6 +11,26 @@ from .fitting import validate_fit_result
 from .scoring import fingerprint
 
 
+def accuracy_grade(reference_value, result_value: float) -> tuple[float | None, int | None]:
+    """Deterministic accuracy suggestion for teachers only; never shown to students."""
+    try:
+        reference = float(reference_value)
+    except (TypeError, ValueError):
+        return None, None
+    if not math.isfinite(reference) or reference == 0 or not math.isfinite(result_value):
+        return None, None
+    error = abs(result_value - reference) / abs(reference) * 100
+    if error <= 5:
+        return error, 100
+    if error <= 7:
+        return error, 90
+    if error <= 10:
+        return error, 85
+    if error <= 15:
+        return error, 80
+    return error, 70
+
+
 def submit(
     student_id: str,
     version: ExperimentVersion,
@@ -38,7 +58,8 @@ def submit(
             .order_by(SubmissionRevision.revision_no.desc())
         )
         revision_no = (previous.revision_no if previous else 0) + 1
-        revision = SubmissionRevision(request_id=request_id, student_id=student_id, course_id=course_id, experiment_version_id=version.id, revision_no=revision_no, payload=payload, result_value=value, relative_error=0.0, deterministic_score=0, passed=False, fingerprint=fp, evaluation_id=None, supersedes_id=previous.id if previous else None)
+        relative_error, deterministic_score = accuracy_grade((version.definition or {}).get("reference_value"), value)
+        revision = SubmissionRevision(request_id=request_id, student_id=student_id, course_id=course_id, experiment_version_id=version.id, revision_no=revision_no, payload=payload, result_value=value, relative_error=relative_error if relative_error is not None else 0.0, deterministic_score=deterministic_score if deterministic_score is not None else 0, passed=False, fingerprint=fp, evaluation_id=None, supersedes_id=previous.id if previous else None)
         session.add(revision)
         session.flush()
         if previous and previous.status == "submitted":

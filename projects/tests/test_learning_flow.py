@@ -103,7 +103,7 @@ def test_student_hall_lists_every_published_teacher_module(app, client):
         session.add(extra); session.flush()
         session.add(ExperimentVersion(experiment_id=extra.id, version_no=1, status="published", definition=dict(source.definition)))
     page = login(client).get_data(as_text=True)
-    assert "<h2>实验展厅</h2>" in page and "6 个实验展厅" not in page
+    assert "<h2>选择一关开始实验</h2>" in page and "无需按顺序，任选一关即可开始挑战" in page
     assert "教师新增量子模块" in page and 'data-experiment-gallery' in page
     assert 'data-gallery-prev' in page and 'data-gallery-next' in page
     assert page.count('class="experiment-display-card') == 6
@@ -186,7 +186,7 @@ def test_submit_idempotency_has_no_machine_grade_and_teacher_review_stays_privat
     assert "学生端仅展示预习题成绩" in first.get_data(as_text=True)
     with app.app_context():
         rows = db_session().scalars(select(SubmissionRevision)).all()
-        assert len(rows) == 1 and rows[0].deterministic_score == 0 and rows[0].relative_error == 0 and rows[0].evaluation_id is None
+        assert len(rows) == 1 and rows[0].deterministic_score == 100 and abs(rows[0].relative_error - 4.0) < 1e-9 and rows[0].evaluation_id is None
         revision_id = rows[0].id
     api = client.get("/api/student/submissions").get_json()[0]
     assert set(api).isdisjoint({"private_score", "private_comment", "teacher_score", "deterministic_score", "relative_error", "ai_score", "ai_feedback"})
@@ -436,7 +436,7 @@ def test_platform_ui_uses_one_typography_icon_and_page_scale_standard():
     templates = "\n".join(path.read_text(encoding="utf-8") for path in (root / "templates").glob("*.html"))
     for token in ("--ui-font-body", "--ui-font-display", "--ui-title-page", "--ui-text-body", "--ui-icon-control", "--ui-content-wide"):
         assert token in css
-    assert "1328 px" in guide and "40 px" in guide and "16 × 16 px" in guide
+    assert "1328 px" in guide and "42 px" in guide and "16 × 16 px" in guide
     assert "font-size:" not in templates and "font-family:" not in templates
     assert "20260806-ui-standard-v1" in (root / "templates" / "base.html").read_text(encoding="utf-8")
 
@@ -553,7 +553,7 @@ def test_learning_memorial_unlocks_from_submission_only_and_relocks_after_withdr
     unlocked = client.get("/student/achievements").get_data(as_text=True)
     ion = unlocked.split('data-code="ION"', 1)[1].split("</button>", 1)[0]
     assert 'data-unlocked="true"' in ion and 'data-revision="1"' in ion
-    assert "实验探索纪念证书" in unlocked and "完成全部实验流程并正式提交报告" in unlocked
+    assert "实验通关纪念证书" in unlocked and "完成全部实验流程并正式提交报告" in unlocked
 
     with app.app_context():
         revision = db_session().scalar(select(SubmissionRevision).where(SubmissionRevision.status == "submitted"))
