@@ -26,11 +26,6 @@ def _on_coze_platform() -> bool:
     return "/opt/bytefaas/" in str(Path(__file__).resolve())
 
 
-def _in_coze_sandbox() -> bool:
-    """The dev sandbox preview is also embedded as a cross-origin iframe."""
-    return bool(os.getenv("COZE_DEVBOX_ENV") or os.getenv("COZE_WORKSPACE_PATH"))
-
-
 class _PreviewSessionInterface(SecureCookieSessionInterface):
     """Session cookie that survives cross-origin preview iframes.
 
@@ -43,12 +38,12 @@ class _PreviewSessionInterface(SecureCookieSessionInterface):
     """
 
     def get_cookie_secure(self, app):
-        if (has_request_context() and request.is_secure) or _on_coze_platform() or _in_coze_sandbox():
+        if (has_request_context() and request.is_secure) or _on_coze_platform():
             return True
         return app.config.get("SESSION_COOKIE_SECURE", False)
 
     def get_cookie_samesite(self, app):
-        if (has_request_context() and request.is_secure) or _on_coze_platform() or _in_coze_sandbox():
+        if (has_request_context() and request.is_secure) or _on_coze_platform():
             return "None"
         return app.config.get("SESSION_COOKIE_SAMESITE", "Lax")
 

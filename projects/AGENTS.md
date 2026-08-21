@@ -152,9 +152,8 @@ docker-compose up -d
 
 ### 预览 iframe 与 session cookie
 
-- Coze 平台预览通常以跨源 iframe 嵌入应用；`SameSite=Lax` 会在 iframe 子请求中丢弃 session cookie，导致登录后 CSRF 失败或认证丢失（表现为"Bad Request: CSRF token missing or invalid"或"只显示登录页、提交后被挡"）。
-- `_PreviewSessionInterface`（`platform_app/__init__.py`）在 HTTPS（平台代理，经 ProxyFix `x_proto=1` 判定）或 `_in_coze_sandbox()`（检测到 `COZE_DEVBOX_ENV`/`COZE_WORKSPACE_PATH`，即开发沙箱预览代理不一定转发 `X-Forwarded-Proto`）时发出 `SameSite=None; Secure`，使 cookie 能跨源 iframe 回传；纯本地 HTTP（无沙箱环境变量）保持 `Lax`。
-- 若预览登录 POST 报 400 CSRF，先检查 `Set-Cookie` 是否为 `SameSite=None; Secure`；沙箱内必须为 None，否则 iframe 丢弃 cookie。
+- Coze 平台预览通常以跨源 iframe 嵌入应用；`SameSite=Lax` 会在 iframe 子请求中丢弃 session cookie，导致登录后 CSRF 失败或认证丢失（表现为"只显示登录页、提交后被挡"）。
+- `_PreviewSessionInterface`（`platform_app/__init__.py`）在 HTTPS（平台代理，经 ProxyFix `x_proto=1` 判定）时发出 `SameSite=None; Secure`，使 cookie 能跨源 iframe 回传；HTTP 本地开发保持 `Lax`。
 - 开发模式下 `frame-ancestors *` 且移除 `X-Frame-Options`，允许平台嵌入预览；生产模式恢复 `DENY` / `frame-ancestors 'none'`。
 - SQLite 启用 WAL + `busy_timeout=5000`，缓解 gunicorn 多 worker 并发写锁定。
 
