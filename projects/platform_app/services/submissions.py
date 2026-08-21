@@ -10,6 +10,39 @@ from ..models import AuditEvent, ExperimentVersion, Review, SubmissionRevision
 from .fitting import validate_fit_result
 from .scoring import fingerprint
 
+ACCURACY_ERROR_CUTOFF = 999.0
+
+
+def accuracy_grade(reference_value, result_value):
+    """确定性准确度建议评分，仅供教师审核参考，学生端不可见。
+
+    相对误差 = |实验结果 - 冻结参考值| / |冻结参考值|；
+    误差 <=5% 给 100，<=7% 给 90，<=10% 给 85，<=15% 给 80，其余 70。
+    参考值缺失或非有限数值时返回 None，表示不给出建议分。
+    """
+    try:
+        reference = float(reference_value)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(reference):
+        return None
+    if reference == 0:
+        relative_error = 0.0 if result_value == 0 else ACCURACY_ERROR_CUTOFF
+    else:
+        relative_error = abs(result_value - reference) / abs(reference)
+    relative_error = min(relative_error, ACCURACY_ERROR_CUTOFF)
+    if relative_error <= 0.05:
+        score = 100
+    elif relative_error <= 0.07:
+        score = 90
+    elif relative_error <= 0.10:
+        score = 85
+    elif relative_error <= 0.15:
+        score = 80
+    else:
+        score = 70
+    return relative_error, score
+
 
 def submit(
     student_id: str,
@@ -38,7 +71,9 @@ def submit(
             .order_by(SubmissionRevision.revision_no.desc())
         )
         revision_no = (previous.revision_no if previous else 0) + 1
-        revision = SubmissionRevision(request_id=request_id, student_id=student_id, course_id=course_id, experiment_version_id=version.id, revision_no=revision_no, payload=payload, result_value=value, relative_error=0.0, deterministic_score=0, passed=False, fingerprint=fp, evaluation_id=None, supersedes_id=previous.id if previous else None)
+        graded = accuracy_grade(version.definition.get("reference_value"), value)
+        relative_error, deterministic_score = graded if graded else (0.0, 0)
+        revision = SubmissionRevision(request_id=request_id, student_id=student_id, course_id=course_id, experiment_version_id=version.id, revision_no=revision_no, payload=payload, result_value=value, relative_error=relative_error, deterministic_score=deterministic_score, passed=False, fingerprint=fp, evaluation_id=None, supersedes_id=previous.id if previous else None)
         session.add(revision)
         session.flush()
         if previous and previous.status == "submitted":

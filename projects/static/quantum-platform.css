@@ -475,8 +475,8 @@ body{position:relative;isolation:isolate}main,footer{position:relative;z-index:1
   --ui-font-display:"Songti SC","STSong",Georgia,"Times New Roman",serif;
   --ui-font-number:Inter,"Helvetica Neue",Arial,sans-serif;
   --ui-font-code:Consolas,"SFMono-Regular","Liberation Mono",monospace;
-  --ui-title-page:40px;--ui-title-section:24px;--ui-title-card:18px;--ui-title-small:16px;
-  --ui-text-body:12px;--ui-text-control:12px;--ui-text-label:11px;--ui-text-meta:10px;
+  --ui-title-page:42px;--ui-title-section:26px;--ui-title-card:20px;--ui-title-small:16px;
+  --ui-text-body:14px;--ui-text-control:14px;--ui-text-label:11px;--ui-text-meta:10px;
   --ui-line-title:1.2;--ui-line-body:1.7;--ui-content-wide:1328px;
   --ui-icon-nav:16px;--ui-icon-control:16px;--ui-icon-business:20px;--ui-icon-feature:24px;
 }
@@ -504,8 +504,32 @@ input,textarea,select{font-family:var(--ui-font-body);font-size:var(--ui-text-co
 .memorial-plaque-art>.lucide{width:31%;height:auto;aspect-ratio:1}.experiment-order-navigation .lucide{width:14px;height:14px}
 .teacher-subnav{min-height:42px}.teacher-subnav a{min-height:34px;padding:8px 12px}.teacher-v4-heading{min-height:92px;align-items:center}.teacher-heading-actions,.analytics-heading-tools{min-height:42px}
 @media(max-width:900px){.teacher-v4-page.page-pad,.teacher-review-page.page-pad{width:calc(100% - 36px)}.teacher-v4-heading{min-height:0;align-items:flex-start}.teacher-heading-actions,.analytics-heading-tools{min-height:0}}
-@media(max-width:680px){:root{--ui-title-page:32px;--ui-title-section:22px;--ui-title-card:17px;--ui-text-body:12px}.teacher-v4-page.page-pad,.teacher-review-page.page-pad{width:calc(100% - 20px);padding-top:20px;padding-bottom:40px}.teacher-heading-actions,.analytics-heading-tools{display:flex!important;width:100%;align-items:stretch;flex-direction:column}.teacher-page-status{width:100%;justify-content:flex-end}.teacher-subnav{width:100%;min-height:52px}.teacher-subnav a{flex:1;justify-content:center;min-height:44px}.primary,.secondary-button,.danger-button,.ai-button{min-height:48px}.first-password-page{padding:20px 12px}.first-password-card{padding:26px 20px}.first-password-card input{min-height:48px;font-size:16px!important}.final-academic-report>h1{font-size:20px!important}.final-academic-report>h2{font-size:17px!important}}
+@media(max-width:680px){:root{--ui-title-page:32px;--ui-title-section:22px;--ui-title-card:17px;--ui-text-body:14px;--ui-text-control:14px}.teacher-v4-page.page-pad,.teacher-review-page.page-pad{width:calc(100% - 20px);padding-top:20px;padding-bottom:40px}.teacher-heading-actions,.analytics-heading-tools{display:flex!important;width:100%;align-items:stretch;flex-direction:column}.teacher-page-status{width:100%;justify-content:flex-end}.teacher-subnav{width:100%;min-height:52px}.teacher-subnav a{flex:1;justify-content:center;min-height:44px}.primary,.secondary-button,.danger-button,.ai-button{min-height:48px}.first-password-page{padding:20px 12px}.first-password-card{padding:26px 20px}.first-password-card input{min-height:48px;font-size:16px!important}.final-academic-report>h1{font-size:20px!important}.final-academic-report>h2{font-size:17px!important}}
 /* Report editor: keep the formatting bar above the floating flow navigation. */
 .report-editor-workspace{overflow:visible}
 .report-editor-toolbar{position:sticky;top:132px;z-index:35}
 .report-editor-fit-plot{margin:16px 0;text-align:center}.report-editor-fit-plot img{display:block;max-width:100%;height:auto;margin:0 auto;border:1px solid #d9e2e7;border-radius:8px}.report-editor-fit-plot figcaption{margin-top:6px;color:#6b7d88;font-size:12px;text-align:center}
+/* --- 学生首页关卡与自动评分同步（2026-08） --- */
+.page-pad.student-home-wide{padding-left:max(32px,calc((100vw - 1560px)/2));padding-right:max(32px,calc((100vw - 1560px)/2))}
+.level-gallery-heading h2{margin:6px 0 8px}
+.level-gallery-heading div>p{margin:0;color:var(--muted);font-size:var(--ui-text-body)}
+.level-card .experiment-no{padding:7px 13px;border-radius:999px;font-size:12px;font-weight:600;letter-spacing:.12em}
+.level-status{position:absolute;left:14px;bottom:12px;z-index:2;display:inline-flex;align-items:center;padding:7px 13px;border-radius:999px;font-size:12px;font-weight:600;letter-spacing:.1em;backdrop-filter:blur(7px)}
+.level-status.open{border:1px solid rgba(255,255,255,.4);background:rgba(22,38,89,.78);color:#fff}
+.level-status.cleared{border:1px solid rgba(255,255,255,.55);background:linear-gradient(135deg,#b08a2e,#e2c26a);color:#402e05}
+.level-card .experiment-card-body h3{font-size:17px}
+.level-card .experiment-card-body>p{font-size:12px}
+.level-card p.muted{min-height:0;margin:10px 0 0;font-size:13px;color:var(--muted)}
+.level-card p.muted b{color:var(--jade);font-size:16px}
+.level-card .experiment-card-body .primary{margin-top:14px}
+.automatic-accuracy-score{margin-bottom:18px;padding-bottom:18px;border-bottom:1px dashed var(--line)}
+.automatic-accuracy-score h3{margin:8px 0 12px}
+.automatic-accuracy-score .accuracy-metrics{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
+.automatic-accuracy-score .accuracy-metrics article{padding:14px;border:1px solid color-mix(in srgb,var(--jade) 22%,transparent);border-radius:12px;background:var(--jade-soft)}
+.automatic-accuracy-score .accuracy-metrics small{display:block;margin-bottom:6px;color:var(--jade);font-size:11px;letter-spacing:.12em;text-transform:uppercase;opacity:.75}
+.automatic-accuracy-score .accuracy-metrics b{font-size:28px;font-weight:600;color:var(--jade);font-family:var(--ui-font-number)}
+.automatic-accuracy-score p{margin:0;color:var(--muted);font-size:12px;line-height:1.8}
+.certificate-dialog{max-width:680px;text-align:center}
+.certificate-dialog .button-row{justify-content:center;margin-top:22px}
+.certificate-dialog .certificate-seal-image{display:block;width:64px;height:64px;margin:0 auto 10px}
+@media(max-width:680px){.page-pad.student-home-wide{padding-left:16px;padding-right:16px}}
