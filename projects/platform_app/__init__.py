@@ -8,7 +8,7 @@ from threading import Lock
 from urllib.parse import urlsplit
 
 from dotenv import load_dotenv
-from flask import Flask, has_request_context, abort, request, session
+from flask import Flask, abort, current_app, has_request_context, request, session
 from flask.sessions import SecureCookieSessionInterface
 from werkzeug.middleware.proxy_fix import ProxyFix
 
@@ -18,10 +18,13 @@ from .db import init_database
 def _on_coze_platform() -> bool:
     """True when running inside the Coze platform.
 
-    Detection is layered: (1) platform-injected env vars, (2) the FaaS
+    Detection is layered: (1) platform-injected env vars (production or devbox
+    preview; the user-facing connection is always HTTPS there), (2) the FaaS
     deployment path /opt/bytefaas/. Either signal is sufficient.
     """
     if os.getenv("PGDATABASE_URL") or os.getenv("COZE_SUPABASE_URL"):
+        return True
+    if os.getenv("COZE_PROJECT_DOMAIN_DEFAULT") or os.getenv("COZE_DEVBOX_ENV"):
         return True
     return "/opt/bytefaas/" in str(Path(__file__).resolve())
 
@@ -120,6 +123,12 @@ def create_app(test_config: dict | None = None) -> Flask:
         expected = session.get("_csrf_token")
         supplied = request.form.get("csrf_token") or request.headers.get("X-CSRFToken")
         if not expected or not supplied or not compare_digest(str(expected), str(supplied)):
+            current_app.logger.warning(
+                "CSRF rejected %s %s secure=%s proto=%s cookie=%s token=%s",
+                request.method, request.path, request.is_secure,
+                request.headers.get("X-Forwarded-Proto"),
+                bool(request.cookies.get("session")), bool(supplied),
+            )
             abort(400, description="CSRF token missing or invalid")
         return None
 
