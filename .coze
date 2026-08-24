@@ -1,0 +1,27 @@
+[project]
+sub_id = "a2dd8ed4"
+name = "whu-quantum-lab"
+requires = ["python-3.12"]
+project_type = "web"
+version = "0.0.32"
+
+[preview]
+preview_enable = "enabled"
+
+[dev]
+build = ["bash", "projects/scripts/build.sh"]
+run = ["bash", "projects/scripts/run.sh"]
+
+[deploy]
+build = ["bash", "projects/scripts/setup.sh"]
+run = ["bash", "projects/scripts/http_run.sh", "-p", "5000"]
+
+[deploy.profile]
+kind = "service"
+flavor = "web"
+
+[deploy.backend]
+enabled = true
+
+[subprojects]
+path = ["projects"]

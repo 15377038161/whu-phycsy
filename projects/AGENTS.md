@@ -81,10 +81,10 @@ python app.py
 
 ### 预览链路
 
-项目已配置 `.coze` 和 `.preview`，支持平台预览：
+项目为多层结构：平台入口是工作区根目录 `/workspace/projects/.coze`（`[subprojects].path = ["projects"]`，`[dev]`/`[deploy]` 命令使用 `projects/` 前缀），子项目 `.coze` 在 `projects/` 内。根 `.coze` 丢失会导致平台报 ".coze configuration file not found"，需从 git 历史恢复，不要凭空猜测字段。
 
-- **构建脚本**：`scripts/build.sh`（创建虚拟环境、安装依赖）
-- **启动脚本**：`scripts/run.sh`（从 `.preview` 读取端口，启动 Flask dev server）
+- **构建脚本**：`scripts/build.sh`（优先创建 `.venv` 安装依赖；沙箱镜像缺 ensurepip 时自动回退 `pip install --user`）
+- **启动脚本**：`scripts/run.sh`（从 `.preview` 读取端口，启动 Flask dev server；清理端口残留进程：`fuser` 不可用时回退定向 `pkill`，绝不触碰 9000）
 - **端口**：固定 5000（对外暴露），从 `.preview` 读取
 - **绑定**：`0.0.0.0`（IPv4 全接口）
 

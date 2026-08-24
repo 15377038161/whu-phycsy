@@ -39,7 +39,14 @@ if [ -z "${EXPOSE_PORT}" ]; then
 fi
 
 # Clear any stale listener on the preview port before starting.
-fuser -k "${EXPOSE_PORT}/tcp" 2>/dev/null || true
+if command -v fuser >/dev/null 2>&1; then
+  fuser -k "${EXPOSE_PORT}/tcp" 2>/dev/null || true
+else
+  # fuser is absent in this sandbox; fall back to a targeted pkill of the
+  # known preview launch forms. Never matches unrelated services.
+  pkill -f "[f]lask run --host=0.0.0.0 --port=${EXPOSE_PORT}" 2>/dev/null || true
+  pkill -f "[a]pp\.py run 0\.0\.0\.0:${EXPOSE_PORT}" 2>/dev/null || true
+fi
 sleep 1
 
 # Start the Flask dev server on all IPv4 interfaces.
