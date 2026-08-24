@@ -436,7 +436,7 @@ def test_platform_ui_uses_one_typography_icon_and_page_scale_standard():
     templates = "\n".join(path.read_text(encoding="utf-8") for path in (root / "templates").glob("*.html"))
     for token in ("--ui-font-body", "--ui-font-display", "--ui-title-page", "--ui-text-body", "--ui-icon-control", "--ui-content-wide"):
         assert token in css
-    assert "1328 px" in guide and "42 px" in guide and "16 × 16 px" in guide
+    assert "1328 px" in guide and "44 px" in guide and "16 × 16 px" in guide
     assert "font-size:" not in templates and "font-family:" not in templates
     assert "20260806-ui-standard-v1" in (root / "templates" / "base.html").read_text(encoding="utf-8")
 
