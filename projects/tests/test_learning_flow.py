@@ -602,23 +602,25 @@ def test_student_home_uses_100_point_quiz_score_and_completed_experiment_count(a
     _answer_quiz(app, client)
     before_submission = client.get("/student/home").get_data(as_text=True)
     assert "预习题成绩 <b>100/100</b>" in before_submission
-    assert "已完成实验" in before_submission and "0 / 5" in before_submission
+    assert "已完成实验" in before_submission and "0 / 3" in before_submission
     _submit(client)
     after_submission = client.get("/student/home").get_data(as_text=True)
-    assert "已完成实验" in after_submission and "1 / 5" in after_submission
+    assert "已完成实验" in after_submission and "1 / 3" in after_submission
 
 
 def test_student_home_shows_memorial_directly_and_makes_each_level_selectable(client):
     page = login(client).get_data(as_text=True)
     assert "我的通关纪念" in page and "实验探索纪念证书" in page
     assert page.count("选择本关并开始") == 5
+    assert page.count("data-achievement-item") == 3
+    assert "这里仅展示你已选择的 3 个实验" in page
 
 
 def test_learning_memorial_unlocks_from_submission_only_and_relocks_after_withdrawal(app, client):
     login(client)
     initial = client.get("/student/achievements").get_data(as_text=True)
-    assert "我的通关纪念" in initial and initial.count("data-achievement-item") == 5
-    assert initial.count('data-unlocked="false"') == 5
+    assert "我的通关纪念" in initial and initial.count("data-achievement-item") == 3
+    assert initial.count('data-unlocked="false"') == 3
     assert "正式提交实验报告后解锁对应证书" in initial and "通过后解锁" not in initial
 
     _answer_quiz(app, client)
@@ -642,7 +644,7 @@ def test_student_experiment_navigation_and_catalog_boundaries(app, client):
     experiment = client.get("/student/experiment/ION").get_data(as_text=True)
     assert 'data-workspace-step-nav' in experiment and 'data-workspace-prev' in experiment and 'data-workspace-next' in experiment
     records = client.get("/student/records").get_data(as_text=True)
-    assert "我的实验" in records and records.count('data-record-state="incomplete"') == 5
+    assert "我的实验" in records and records.count('data-record-state="incomplete"') == 3
     assert 'data-record-filter="all"' in records and 'data-record-filter="completed"' in records and 'data-record-filter="incomplete"' in records
     assert "报告与荣誉" in client.get("/student/achievements").get_data(as_text=True)
     _answer_quiz(app, client); _submit(client)

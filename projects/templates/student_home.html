@@ -41,9 +41,9 @@
     <h2>{{ user.name }}，欢迎回来</h2>
     <p>先选择至少 {{ selection.required }} 个实验关卡，再按任意顺序挑战；每个实验内部按步骤闯过小关，完成报告后点亮奖状。</p>
     <div class="metric-strip">
-      <div><small>已完成实验</small><b>{{ completed_experiment_count }} / {{ items|length }}</b></div>
+      <div><small>已完成实验</small><b>{{ completed_experiment_count }} / {{ selection.count if selection.ready else selection.required }}</b></div>
       <div><small>报告修订</small><b>{{ submission_count }}</b></div>
-    <div><small>已选关卡</small><b>{{ selection.count }} / {{ items|length }}</b></div>
+    <div><small>已选关卡</small><b>{{ selection.count }} / {{ selection.count if selection.ready else selection.required }}</b></div>
     </div>
   </article>
   {% if featured %}{% set exp, version, latest = featured %}

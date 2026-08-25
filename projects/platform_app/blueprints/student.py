@@ -95,8 +95,13 @@ def _achievement_context(items, user_id: str):
 
 
 def _student_progress_context(user_id: str, course: Course | None):
-    """Build the student's single experiment catalogue without exposing review data."""
+    """Build progress for the student's selected experiments without exposing review data."""
     catalog = published_experiments(db_session(), course.id if course else None)
+    if course:
+        versions = [version for _, version in catalog]
+        selection = selection_summary(db_session(), course, user_id, versions)
+        selected_ids = set(selection["selected"])
+        catalog = [(exp, version) for exp, version in catalog if version.id in selected_ids]
     revision_rows = db_session().execute(
         select(SubmissionRevision, ExperimentVersion)
         .join(ExperimentVersion, ExperimentVersion.id == SubmissionRevision.experiment_version_id)
@@ -272,9 +277,17 @@ def home():
         if cover_hash:
             cover_assets[version.id] = db_session().get(FileAsset, cover_hash)
     selected_items = [item for item in items if selection["by_version"].get(item[1].id) and selection["by_version"][item[1].id].selected]
+    selected_experiment_ids = {exp.id for exp, _, _ in selected_items}
     featured, featured_kicker, featured_action = _current_experiment(selected_items, activity_at)
-    completed_experiment_count = sum(1 for revision in latest_by_experiment.values() if revision.status == "submitted")
-    achievement_context = _achievement_context(items, user.id)
+    completed_experiment_count = sum(
+        1 for experiment_id, revision in latest_by_experiment.items()
+        if experiment_id in selected_experiment_ids and revision.status == "submitted"
+    )
+    selected_submission_count = sum(
+        1 for _, revision_version in submission_rows
+        if revision_version.experiment_id in selected_experiment_ids
+    )
+    achievement_context = _achievement_context(selected_items, user.id)
     certificate_code = (request.args.get("certificate") or "").strip().upper()
     certificate_item = next(
         (item for item in achievement_context["achievement_items"] if item["code"] == certificate_code and item["unlocked"]),
@@ -283,7 +296,7 @@ def home():
     return render_template(
         "student_home.html", user=user, course=course, items=items,
         quiz_score_map=quiz_score_map, completed_experiment_count=completed_experiment_count,
-        submission_count=len(submission_rows), cover_assets=cover_assets, featured=featured,
+        submission_count=selected_submission_count, cover_assets=cover_assets, featured=featured,
         featured_kicker=featured_kicker, featured_action=featured_action,
         certificate_item=certificate_item, selection=selection, **achievement_context,
     )
