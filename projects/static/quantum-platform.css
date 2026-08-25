@@ -627,5 +627,5 @@ body.is-offline [data-requires-online]{opacity:.5;cursor:not-allowed}.empty-tabl
 @media(max-width:420px){.challenge-actions{grid-template-columns:1fr}.challenge-actions .step-save-state{grid-column:1}.challenge-actions>button{grid-column:1}.workspace-shell.page-pad{padding-left:8px;padding-right:8px}.workspace-panel{padding-left:12px;padding-right:12px}}
 
 /* 数据表支持学生在当前实验记录中追加自定义测量列；标题和数字使用同一套中文字体基线。 */
-.challenge-table-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.challenge-table-actions .secondary-button{min-height:38px;padding:8px 12px;font-size:13px}.challenge-step-heading h3{font-family:var(--ui-font-display);font-variant-numeric:lining-nums tabular-nums}
+.challenge-table-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.challenge-table-actions .secondary-button{min-height:38px;padding:8px 12px;font-size:13px}.challenge-table-field th .table-column-name{width:100%;min-width:110px;border:1px solid rgba(17,87,64,.25);border-radius:6px;padding:4px 6px;background:#fff;color:var(--blue);font:inherit;text-align:center}.challenge-step-heading h3{font-family:var(--ui-font-display);font-variant-numeric:lining-nums tabular-nums}
 @media(max-width:620px){.challenge-table-actions{width:100%}.challenge-table-actions .secondary-button{flex:1}}
