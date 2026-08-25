@@ -25,6 +25,8 @@ def _upgrade_columns(engine: Engine) -> None:
             _add_column(connection, "users", f"must_change_password BOOLEAN NOT NULL DEFAULT {bool_default}")
         if "teacher_id" not in _column_names(inspector, "courses"):
             _add_column(connection, "courses", "teacher_id VARCHAR(64) REFERENCES users(id)")
+        if "min_experiments_required" not in _column_names(inspector, "courses"):
+            _add_column(connection, "courses", "min_experiments_required INTEGER NOT NULL DEFAULT 3")
         quiz_columns = _column_names(inspector, "quiz_assignments")
         if "completed_at" not in quiz_columns:
             _add_column(connection, "quiz_assignments", f"completed_at {timestamp_type}")

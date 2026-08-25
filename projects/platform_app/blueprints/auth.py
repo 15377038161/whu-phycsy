@@ -17,6 +17,7 @@ LOGIN_LOCK_SECONDS = 5 * 60
 INLINE_MEDIA_TYPES = {
     "image/jpeg", "image/png", "image/webp", "image/gif",
     "video/mp4", "video/webm", "video/quicktime",
+    "application/pdf",
 }
 
 
@@ -158,7 +159,7 @@ def media(sha256):
     if not current_user():
         return redirect(url_for("auth.login"))
     asset = db_session().get(FileAsset, sha256)
-    if not asset or not asset.content_type.startswith(("video/", "image/")):
+    if not asset or not (asset.content_type.startswith(("video/", "image/")) or asset.content_type in {"application/pdf", "application/vnd.ms-powerpoint", "application/vnd.openxmlformats-officedocument.presentationml.presentation"}):
         return "媒体文件不存在", 404
     path = __import__('pathlib').Path(current_app.config["DATA_DIR"]) / asset.object_key
     if not path.is_file():

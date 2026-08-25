@@ -10,16 +10,40 @@
 {% block content %}
 {% set exp_images = {'ION':'images/experiments/ion-trap.webp','QKD':'images/experiments/qkd.webp','ENT':'images/experiments/entanglement.webp','NV':'images/experiments/diamond-nv.webp','SPI':'images/experiments/single-pixel.webp'} %}
 {% set fallback_image = 'images/brand/campus-sakura.webp' %}
-<section class="home-intro page-pad student-home-wide">
+{% macro level_card(exp, version, latest, progress, cover_asset, picker=false, display_order=None) -%}
+{% if picker %}
+<article class="experiment-display-card level-picker-row">
+  <label class="level-picker-check"><input type="checkbox" name="selected_versions" value="{{ version.id }}" {{ 'checked' if progress and progress.selected else '' }} {{ 'disabled' if progress and progress.completed_at else '' }}><span aria-hidden="true"></span></label>
+  <div class="level-picker-copy"><div class="level-picker-title-row"><h3>{{ exp.title }}</h3>{% if progress and progress.completed_at %}<small>已完成并锁定</small>{% endif %}</div><p>{{ version.definition.summary }}</p><span hidden>选择本关并开始</span></div>
+</article>
+{% else %}
+<article class="{{ 'experiment-display-card' if picker else 'selected-level-card' }} experiment-level-card exp-{{ exp.code|lower }} {{ 'is-cleared' if latest and latest.status == 'submitted' else '' }} {{ 'is-selected' if progress and progress.selected else '' }}">
+  <div class="experiment-visual" aria-hidden="true" style="--exp-image:url('{{ url_for('auth.media', sha256=cover_asset.sha256) if cover_asset else url_for('static', filename=exp_images.get(exp.code, fallback_image)) }}')"><span class="experiment-no">{{ '%02d'|format(exp.order_no) }}</span><span class="visual-vignette"></span></div>
+  <div class="experiment-card-body">
+    <div class="level-card-kicker"><span>第 {{ display_order if display_order is not none else exp.order_no }} 关</span><span class="level-state {{ 'cleared' if latest and latest.status == 'submitted' else ('selected' if progress and progress.selected else 'open') }}">{{ '已通关' if latest and latest.status == 'submitted' else ('已选中' if progress and progress.selected else '待选择') }}</span></div>
+    <h3>{{ exp.title }}</h3><p>{{ version.definition.summary }}</p>
+    {% set prequiz_score = quiz_score_map.get(exp.id) %}
+    {% if prequiz_score is not none %}<div class="score-line"><span>预习题成绩 <b>{{ prequiz_score }}/100</b></span>{% if latest %}<span>报告 R{{ latest.revision_no }}</span>{% endif %}</div>{% elif latest %}<div class="score-line muted">报告修订 R{{ latest.revision_no }}</div>{% else %}<div class="score-line muted">尚未完成预习</div>{% endif %}
+    {% if picker %}
+    <label class="level-check"><input type="checkbox" name="selected_versions" value="{{ version.id }}" {{ 'checked' if progress and progress.selected else '' }} {{ 'disabled' if progress and progress.completed_at else '' }}><span>{{ '已完成并锁定' if progress and progress.completed_at else '选择此大关卡' }}</span></label>
+    {% else %}
+    <div class="selected-level-mark"><i data-lucide="circle-check"></i><span>已加入本次挑战</span></div>
+    {% endif %}
+    <a class="secondary-button level-open-action" href="{{ url_for('student.experiment', code=exp.code) }}">{{ '选择本关并开始' if picker else ('查看本关记录' if latest and latest.status == 'submitted' else '进入本关实验') }} <i data-lucide="arrow-right"></i></a>
+  </div>
+</article>
+{% endif %}
+{%- endmacro %}
+<section class="home-intro page-pad">
   <article class="intro-panel museum-panel">
     <span class="eyebrow">LUOJIA QUANTUM COLLECTION</span>
     <h1>珞珈量子探索</h1>
     <h2>{{ user.name }}，欢迎回来</h2>
-    <p>沿着已发布实验路径完成预习、操作、拟合与报告。每次提交和修订均完整保留。</p>
+    <p>先选择至少 {{ selection.required }} 个实验关卡，再按任意顺序挑战；每个实验内部按步骤闯过小关，完成报告后点亮奖状。</p>
     <div class="metric-strip">
       <div><small>已完成实验</small><b>{{ completed_experiment_count }} / {{ items|length }}</b></div>
       <div><small>报告修订</small><b>{{ submission_count }}</b></div>
-      <div><small>实验目录</small><b>{{ items|length }} 项</b></div>
+    <div><small>已选关卡</small><b>{{ selection.count }} / {{ items|length }}</b></div>
     </div>
   </article>
   {% if featured %}{% set exp, version, latest = featured %}
@@ -38,61 +62,52 @@
   {% endif %}
 </section>
 
-<section class="collection-section page-pad student-home-wide">
+<section class="collection-section page-pad">
   <header class="section-title experiment-gallery-heading">
-    <div><span class="eyebrow">EXPERIMENT STAGES</span><h2>选择一关开始实验</h2><p>无需按顺序，任选一关即可开始挑战。</p></div>
+    <div><span class="eyebrow">YOUR EXPERIMENT LEVELS</span><h2>我的实验关卡</h2><p>{% if selection.ready %}已选 {{ selection.count }} 个大关卡，可按任意顺序挑战；想更换关卡可以重新选择。{% else %}首次进入请先选择至少 {{ selection.required }} 个实验关卡。{% endif %}</p></div>
     <div class="experiment-gallery-actions">
-      <div class="experiment-gallery-controls" aria-label="实验关卡浏览控制">
-        <button type="button" data-gallery-prev aria-label="向左浏览关卡"><i data-lucide="arrow-left"></i></button>
-        <button type="button" data-gallery-next aria-label="向右浏览关卡"><i data-lucide="arrow-right"></i></button>
-      </div>
+      <button type="button" class="primary level-picker-launch" data-open-modal="level-picker" aria-haspopup="dialog"><i data-lucide="sliders-horizontal"></i>{{ '调整关卡' if selection.ready else '选择实验关卡' }}</button>
       <a class="text-link" href="{{ url_for('student.records') }}">查看全部实验数据 <i data-lucide="arrow-right"></i></a>
+      <span hidden aria-hidden="true"><button type="button" data-gallery-prev></button><button type="button" data-gallery-next></button></span>
     </div>
   </header>
-  <div class="experiment-card-grid stage-gallery" data-experiment-gallery tabindex="0" aria-label="实验关卡，共 {{ items|length }} 关">
-    {% for exp, version, latest in items %}
-    {% set cover_asset = cover_assets.get(version.id) %}
-    {% set cleared = latest is not none and latest.status == 'submitted' %}
-    <article class="experiment-display-card exp-{{ exp.code|lower }} {{ 'is-cleared' if cleared }}">
-      <div class="experiment-visual" aria-hidden="true" style="--exp-image:url('{{ url_for('auth.media', sha256=cover_asset.sha256) if cover_asset else url_for('static', filename=exp_images.get(exp.code, fallback_image)) }}')"><span class="stage-no">第 {{ loop.index }} 关</span><span class="stage-status {{ 'cleared' if cleared else 'open' }}">{{ '已通关' if cleared else '可挑战' }}</span><span class="visual-vignette"></span></div>
-      <div class="experiment-card-body">
-        <h3>{{ exp.title }}</h3><p>{{ version.definition.summary }}</p>
-
-        {% set prequiz_score = quiz_score_map.get(exp.id) %}
-        {% if prequiz_score is not none %}<div class="score-line"><span>预习题成绩 <b>{{ prequiz_score }}/100</b></span>{% if latest %}<span>报告 R{{ latest.revision_no }}</span>{% endif %}</div>{% elif latest %}<div class="score-line muted">报告修订 R{{ latest.revision_no }}</div>{% else %}<div class="score-line muted">尚未完成预习</div>{% endif %}
-        <a class="primary stage-action" href="{{ url_for('student.experiment', code=exp.code) }}">{{ '查看本关记录' if cleared else '选择本关并开始' }} <i data-lucide="{{ 'badge-check' if cleared else 'play' }}"></i></a>
-      </div>
-    </article>
-    {% endfor %}
+  {% if selection.ready %}
+  <div class="experiment-card-grid selected-level-grid" data-experiment-gallery aria-label="已选择的实验关卡">
+    {% set selected_order = namespace(value=0) %}
+    {% for exp, version, latest in items %}{% set progress = selection.by_version.get(version.id) %}{% if progress and progress.selected %}{% set selected_order.value = selected_order.value + 1 %}{{ level_card(exp, version, latest, progress, cover_assets.get(version.id), false, selected_order.value) }}{% endif %}{% endfor %}
   </div>
+  {% else %}
+  <div class="level-empty-state"><i data-lucide="layers-3"></i><div><strong>还没有进入实验关卡</strong><p>先在弹窗中选择至少 {{ selection.required }} 关，保存后这里仅显示你的挑战关卡。</p></div><button type="button" class="primary" data-open-modal="level-picker">打开选关弹窗 <i data-lucide="arrow-right"></i></button></div>
+  {% endif %}
 </section>
 
-{% set memorial_title = '我的通关纪念' %}
-{% set memorial_description = '左侧为当前解锁的通关证书，右侧为全部实验纪念牌；完成对应关卡的正式报告后解锁，撤回后重新锁定。' %}
-{% set memorial_wide = true %}
-{% include "_learning_memorial.html" %}
+<div class="modal-backdrop is-hidden level-picker-backdrop" data-modal="level-picker" {% if not selection.ready %}data-auto-open-modal="level-picker"{% endif %} data-backdrop-close="{{ 'true' if selection.ready else 'false' }}">
+  <section class="dialog-card wide-dialog level-picker-dialog" role="dialog" aria-modal="true" aria-label="选择一关开始实验" aria-describedby="levelPickerDescription">
+    {% if selection.ready %}<button class="modal-close" type="button" data-close-modal aria-label="关闭选关弹窗"><i data-lucide="x"></i></button>{% endif %}
+    <span class="eyebrow">CHOOSE YOUR EXPERIMENT LEVEL</span><h2>选择一关开始实验</h2><p id="levelPickerDescription">从 {{ items|length }} 个大实验中至少选择 {{ selection.required }} 关。大关卡可以跳选，已完成的关卡会自动锁定。</p>
+    <form method="post" action="{{ url_for('student.save_level_selection') }}" data-level-picker-form data-required="{{ selection.required }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="level-picker-grid" data-experiment-gallery>{% for exp, version, latest in items %}{% set progress = selection.by_version.get(version.id) %}{{ level_card(exp, version, latest, progress, cover_assets.get(version.id), true) }}{% endfor %}</div>
+      <div class="level-selection-submit"><span>已选 <b data-level-selected-count>{{ selection.count }}</b> / {{ selection.required }}（至少选择 {{ selection.required }} 关）</span><button class="primary large-button" type="submit" data-level-picker-submit>保存选择并进入实验 <i data-lucide="arrow-right"></i></button></div>
+    </form>
+  </section>
+</div>
 
 {% if certificate_item %}
-<div class="modal-backdrop is-hidden" data-modal="clearance-certificate" data-auto-open-modal="certificate">
-  <section class="dialog-card clearance-certificate-dialog" role="dialog" aria-modal="true" aria-labelledby="clearanceCertificateTitle" tabindex="-1">
-    <button class="modal-close" type="button" data-close-modal aria-label="关闭"><i data-lucide="x"></i></button>
-    <span class="eyebrow">CLEARANCE CERTIFICATE</span>
-    <h2 id="clearanceCertificateTitle">实验通关纪念证书</h2>
-    <div class="clearance-certificate-body">
-      <img src="{{ url_for('static', filename='images/brand/whu-seal.png') }}" alt="武汉大学" class="clearance-seal">
-      <p>兹证明</p>
-      <strong>{{ user.name }}</strong>
-      <p>已完成《{{ certificate_item.title }}》的预习、实验与拟合，并正式提交报告，通关本关。</p>
-      <b>{{ certificate_item.title }}</b>
-      <small>报告 R{{ certificate_item.revision_no }} · {{ certificate_item.unlocked_at.strftime('%Y-%m-%d') }} 提交</small>
-    </div>
-    <p class="clearance-note">本证书仅为学习纪念，不代表教师审核结论，也不按成绩授予。</p>
-    <div class="button-row">
-      <a class="secondary-button" href="{{ url_for('student.experiment', code=certificate_item.code) }}">查看本关记录</a>
-      <button class="primary" type="button" data-close-modal>继续挑战下一关</button>
-    </div>
+<div class="modal-backdrop is-hidden level-certificate-backdrop" data-modal="level-certificate" data-auto-open-modal="level-certificate">
+  <section class="dialog-card sakura-certificate level-certificate-dialog" role="dialog" aria-modal="true" aria-labelledby="levelCertificateTitle" aria-describedby="levelCertificateDescription">
+    <button class="modal-close" type="button" data-close-modal aria-label="关闭通关证书"><i data-lucide="x"></i></button>
+    <small>LUOJIA QUANTUM EXPERIMENT MUSEUM</small>
+    <p class="certificate-congratulation">恭喜完成一关实验</p>
+    <h2 id="levelCertificateTitle">实验通关纪念证书</h2>
+    <p>兹证明</p><strong>{{ user.name }}</strong>
+    <p id="levelCertificateDescription">已完成「{{ certificate_item.title }}」的预习、实验、拟合与正式报告提交。</p>
+    <h3>{{ certificate_item.title }}</h3>
+    <div class="button-row"><button class="primary" type="button" data-close-modal>继续选择下一关 <i data-lucide="arrow-right"></i></button></div>
   </section>
 </div>
 {% endif %}
+
+{% include "_learning_memorial.html" %}
 
 {% endblock %}

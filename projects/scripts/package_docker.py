@@ -7,7 +7,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 OUTPUT = ROOT / "dist" / f"wuda-docker-{date.today():%Y%m%d}.zip"
-ROOT_FILES = {"Dockerfile", ".dockerignore", ".env.example", "README.md", "DEPLOYMENT.md", "TEACHER_LOCAL_DEPLOYMENT_GUIDE.md", "ARCHITECTURE.md", "UI_VISUAL_STANDARD.md", "TEACHER_UI_SPEC.md", "AGENTS.md", "requirements.txt", "app.py", "ai_service.py", "auth_service.py", "docker-compose.yml"}
+ROOT_FILES = {"Dockerfile", ".dockerignore", ".env.example", "README.md", "DEPLOYMENT.md", "TEACHER_LOCAL_DEPLOYMENT_GUIDE.md", "ARCHITECTURE.md", "UI_VISUAL_STANDARD.md", "FUNCTION_API_PLAN.md", "TEACHER_UI_SPEC.md", "AGENTS.md", "requirements.txt", "app.py", "ai_service.py", "auth_service.py", "docker-compose.yml"}
 INCLUDE_DIRS = {"platform_app", "scripts", "static", "templates"}
 EXCLUDED_PARTS = {".git", ".pytest_cache", "__pycache__", ".venv", "dist", "outputs", "uploads", "runtime", "tmp", "实例实验报告"}
 EXCLUDED_FILES = {"data.json", "demo_data.json", "PROJECT_PRESENTATION_SCRIPT.md", ".env.local.example"}
@@ -21,7 +21,7 @@ def include(path: Path) -> bool:
 
 def main() -> int:
     files = sorted(p for p in ROOT.rglob("*") if p.is_file() and include(p))
-    required = {"Dockerfile", "docker-compose.yml", ".env.example", "TEACHER_LOCAL_DEPLOYMENT_GUIDE.md", "UI_VISUAL_STANDARD.md", "TEACHER_UI_SPEC.md", "scripts/init_database.py", "static/fonts/simhei.ttf", "static/quantum-platform.css", "static/platform.js", "static/images/brand/whu-seal.png", "static/images/brand/whu-signature-white.png", "static/images/brand/campus-sakura.webp", "static/images/brand/sakura-certificate.webp", "static/images/experiments/ion-trap.webp", "static/images/experiments/qkd.webp", "static/images/experiments/entanglement.webp", "static/images/experiments/diamond-nv.webp", "static/images/experiments/single-pixel.webp", "templates/student_records.html", "templates/student_achievements.html", "platform_app/models.py"}
+    required = {"Dockerfile", "docker-compose.yml", ".env.example", "TEACHER_LOCAL_DEPLOYMENT_GUIDE.md", "UI_VISUAL_STANDARD.md", "FUNCTION_API_PLAN.md", "TEACHER_UI_SPEC.md", "scripts/init_database.py", "static/fonts/simhei.ttf", "static/quantum-platform.css", "static/platform.js", "static/images/brand/whu-seal.png", "static/images/brand/whu-signature-white.png", "static/images/brand/campus-sakura.webp", "static/images/brand/sakura-certificate.webp", "static/images/experiments/ion-trap.webp", "static/images/experiments/qkd.webp", "static/images/experiments/entanglement.webp", "static/images/experiments/diamond-nv.webp", "static/images/experiments/single-pixel.webp", "templates/student_records.html", "templates/student_achievements.html", "platform_app/models.py"}
     names = {p.relative_to(ROOT).as_posix() for p in files}
     missing = required - names
     if missing: print("Packaging failed; missing: " + ", ".join(sorted(missing)), file=sys.stderr); return 1

@@ -34,6 +34,7 @@ class Course(Base):
     id: Mapped[str] = mapped_column(String(64), primary_key=True, default=uid)
     teacher_id: Mapped[str | None] = mapped_column(ForeignKey("users.id"), index=True)
     name: Mapped[str] = mapped_column(String(160))
+    min_experiments_required: Mapped[int] = mapped_column(Integer, default=3, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
@@ -165,6 +166,25 @@ class ReportDraft(Base):
     asset_hashes: Mapped[list] = mapped_column(JSON, default=list)
     lock_version: Mapped[int] = mapped_column(Integer, default=1)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, onupdate=now)
+
+
+class StudentExperimentProgress(Base):
+    """Student-selected experiment and step-level learning state."""
+
+    __tablename__ = "student_experiment_progress"
+    __table_args__ = (
+        UniqueConstraint("course_id", "student_id", "experiment_version_id"),
+    )
+    id: Mapped[str] = mapped_column(String(64), primary_key=True, default=uid)
+    course_id: Mapped[str] = mapped_column(ForeignKey("courses.id"), index=True)
+    student_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    experiment_version_id: Mapped[str] = mapped_column(ForeignKey("experiment_versions.id"), index=True)
+    selected: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    completed_steps: Mapped[list] = mapped_column(JSON, default=list)
+    step_data: Mapped[dict] = mapped_column(JSON, default=dict)
+    asset_hashes: Mapped[list] = mapped_column(JSON, default=list)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, onupdate=now)
 
 

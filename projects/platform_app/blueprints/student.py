@@ -11,12 +11,14 @@ from flask import Blueprint, current_app, flash, jsonify, redirect, render_templ
 from sqlalchemy import or_, select
 
 from ..db import db_session, transaction
-from ..models import Course, CourseExperiment, Experiment, ExperimentVersion, FileAsset, QuizAssignment, ReportDraft, SubmissionRevision
+from ..models import Course, CourseExperiment, Experiment, ExperimentVersion, FileAsset, QuizAssignment, ReportDraft, SubmissionRevision, StudentExperimentProgress
 from ..services.experiments import course_for_student, ensure_course_experiments, frozen_quiz, published_experiments, restart_quiz
 from ..services.submissions import submit, withdraw
 from ..services.reporting import build_docx, build_pdf, report_document
 from ..services.files import IMAGE_UPLOADS, STUDENT_ATTACHMENT_UPLOADS, save_upload
 from ..services.report_drafts import copy_revision_to_draft, get_or_create_draft, payload_from_document, save_draft, validate_document, validate_submission_document
+from ..services.progress import clean_step_data, get_progress, normalize_steps, selection_summary, update_report_from_step, validate_step
+from ..services.fitting import validate_fit_result
 from ai_service import translate_report_frontmatter
 from .auth import current_user, role_required
 
@@ -185,6 +187,44 @@ def _version(code: str, student_id: str | None = None, course_id: str | None = N
     return db_session().scalar(statement.order_by(ExperimentVersion.version_no.desc()))
 
 
+def _catalog_versions(course: Course | None):
+    return [version for _, version in published_experiments(db_session(), course.id if course else None)]
+
+
+@bp.get("/level-selection")
+@role_required("student")
+def level_selection():
+    user = current_user()
+    course = course_for_student(db_session(), user.id)
+    versions = _catalog_versions(course)
+    summary = selection_summary(db_session(), course, user.id, versions) if course else {"required": 0, "selected": [], "count": 0, "ready": False, "by_version": {}}
+    return jsonify({"required": summary["required"], "count": summary["count"], "ready": summary["ready"], "selected_version_ids": summary["selected"]})
+
+
+@bp.post("/level-selection")
+@role_required("student")
+def save_level_selection():
+    user = current_user()
+    course = course_for_student(db_session(), user.id)
+    if not course:
+        return {"error": "学生尚未加入课程"}, 403
+    versions = _catalog_versions(course)
+    valid_ids = {version.id for version in versions}
+    selected_ids = list(dict.fromkeys(item for item in request.form.getlist("selected_versions") if item in valid_ids))
+    summary = selection_summary(db_session(), course, user.id, versions)
+    completed_ids = {version_id for version_id, progress in summary["by_version"].items() if progress.completed_at}
+    selected_ids = list(dict.fromkeys([*selected_ids, *completed_ids]))
+    if len(selected_ids) < summary["required"]:
+        flash(f"请至少选择 {summary['required']} 个实验关卡。", "error")
+        return redirect(url_for("student.home"))
+    with transaction() as tx:
+        for version in versions:
+            progress = get_progress(tx, course.id, user.id, version.id)
+            progress.selected = version.id in selected_ids or progress.completed_at is not None
+    flash(f"已保存选关：{len(selected_ids)} / {len(versions)} 关，可按任意顺序挑战。", "success")
+    return redirect(url_for("student.home"))
+
+
 @bp.get("/home")
 @role_required("student")
 def home():
@@ -224,17 +264,29 @@ def home():
     for exp, version in published_experiments(db_session(), course.id if course else None):
         latest = latest_by_experiment.get(exp.id)
         items.append((exp, version, latest))
+    versions = [version for _, version, _ in items]
+    selection = selection_summary(db_session(), course, user.id, versions) if course else {"required": 0, "selected": [], "count": 0, "ready": False, "by_version": {}}
     cover_assets = {}
     for _, version, _ in items:
         cover_hash = version.definition.get("cover_image_hash")
         if cover_hash:
             cover_assets[version.id] = db_session().get(FileAsset, cover_hash)
-    featured, featured_kicker, featured_action = _current_experiment(items, activity_at)
+    selected_items = [item for item in items if selection["by_version"].get(item[1].id) and selection["by_version"][item[1].id].selected]
+    featured, featured_kicker, featured_action = _current_experiment(selected_items, activity_at)
     completed_experiment_count = sum(1 for revision in latest_by_experiment.values() if revision.status == "submitted")
-    achievements_context = _achievement_context(items, user.id)
-    certificate_code = request.args.get("certificate", "").strip()
-    certificate_item = next((item for item in achievements_context["achievement_items"] if item["unlocked"] and item["code"].upper() == certificate_code.upper()), None) if certificate_code else None
-    return render_template("student_home.html", user=user, course=course, items=items, quiz_score_map=quiz_score_map, completed_experiment_count=completed_experiment_count, submission_count=len(submission_rows), cover_assets=cover_assets, featured=featured, featured_kicker=featured_kicker, featured_action=featured_action, certificate_item=certificate_item, **achievements_context)
+    achievement_context = _achievement_context(items, user.id)
+    certificate_code = (request.args.get("certificate") or "").strip().upper()
+    certificate_item = next(
+        (item for item in achievement_context["achievement_items"] if item["code"] == certificate_code and item["unlocked"]),
+        None,
+    )
+    return render_template(
+        "student_home.html", user=user, course=course, items=items,
+        quiz_score_map=quiz_score_map, completed_experiment_count=completed_experiment_count,
+        submission_count=len(submission_rows), cover_assets=cover_assets, featured=featured,
+        featured_kicker=featured_kicker, featured_action=featured_action,
+        certificate_item=certificate_item, selection=selection, **achievement_context,
+    )
 
 
 @bp.get("/records")
@@ -276,6 +328,19 @@ def experiment(code):
     if not version:
         return "实验不存在", 404
     exp = db_session().get(Experiment, version.experiment_id)
+    progress = db_session().scalar(select(StudentExperimentProgress).where(
+        StudentExperimentProgress.course_id == course.id,
+        StudentExperimentProgress.student_id == user.id,
+        StudentExperimentProgress.experiment_version_id == version.id,
+    ))
+    selection = selection_summary(db_session(), course, user.id, _catalog_versions(course))
+    if not progress or not progress.selected:
+        if not selection["ready"]:
+            flash(f"请先在首页至少选择 {selection['required']} 个实验关卡。", "error")
+            return redirect(url_for("student.home"))
+        with transaction() as tx:
+            progress = get_progress(tx, course.id, user.id, version.id)
+            progress.selected = True
     with transaction() as tx:
         quiz = frozen_quiz(tx, user.id, course.id, tx.get(ExperimentVersion, version.id))
     if request.method == "POST" and request.form.get("action") == "quiz":
@@ -293,7 +358,7 @@ def experiment(code):
             saved.answers = answers
             saved.completed_at = datetime.now(timezone.utc)
         correct = sum(answers.get(q["id"]) == q["answer"] for q in quiz.questions)
-        flash(f"第 {quiz.attempt_no or 1} 次预习已提交，答对 {correct}/10 题；请逐题查看对错和解析。", "success")
+        flash(f"第 {quiz.attempt_no or 1} 次预习已提交，答对 {correct}/10 题；可查看解析或直接进入操作。", "success")
         return redirect(url_for("student.experiment", code=code) + "#quiz")
     if request.method == "POST" and request.form.get("action") == "quiz_retake":
         try:
@@ -308,7 +373,228 @@ def experiment(code):
     with transaction() as tx:
         draft = get_or_create_draft(tx, tx.get(type(user), user.id), course.id, tx.get(ExperimentVersion, version.id), tx.get(Experiment, exp.id))
     quiz_score = sum((quiz.answers or {}).get(q["id"]) == q["answer"] for q in quiz.questions) if quiz.completed_at else None
-    return render_template("experiment.html", user=user, exp=exp, version=version, quiz=quiz, quiz_score=quiz_score, latest=latest, evaluation=None, demo_asset=demo_asset, report_draft=draft, pyodide_base_url=__import__('flask').current_app.config["PYODIDE_BASE_URL"])
+    steps = normalize_steps(version.definition)
+    steps_by_id = {step["id"]: step for step in steps}
+    progress_data = dict(progress.step_data or {})
+    for step in steps:
+        if step.get("kind") != "fit":
+            continue
+        config = step.get("fit_config") or {}
+        source_step = steps_by_id.get(config.get("source_step_id"))
+        source_item = progress_data.get(str(source_step["index"]), {}) if source_step else progress_data.get(str(step["index"]), {})
+        source_field = config.get("source_field_key")
+        source_rows = (source_item.get("data") or {}).get(source_field, [])
+        source_definition = next((field for field in (source_step or step).get("fields", []) if field.get("key") == source_field), None)
+        step["fit_rows"] = source_rows if isinstance(source_rows, list) else []
+        step["fit_columns"] = list((source_definition or {}).get("columns") or [])
+    completed_steps = set(int(item) for item in (progress.completed_steps or []) if str(item).isdigit())
+    current_step = next((step["index"] for step in steps if step.get("required", True) and step["index"] not in completed_steps), max(0, len(steps) - 1))
+    materials = []
+    for raw in version.definition.get("materials", []):
+        material = dict(raw) if isinstance(raw, dict) else {}
+        asset = db_session().get(FileAsset, material.get("asset_hash")) if material.get("asset_hash") else None
+        preview = db_session().get(FileAsset, material.get("preview_asset_hash")) if material.get("preview_asset_hash") else None
+        material["media_type"] = material.get("media_type") or (Path(asset.original_name).suffix.lstrip(".").lower() if asset else "pdf" if material.get("static_path") else "file")
+        material["asset"] = asset; material["preview_asset"] = preview
+        materials.append(material)
+    return render_template("experiment.html", user=user, exp=exp, version=version, quiz=quiz, quiz_score=quiz_score, latest=latest, evaluation=None, demo_asset=demo_asset, report_draft=draft, progress=progress, step_specs=steps, current_step=current_step, materials=materials, pyodide_base_url=current_app.config["PYODIDE_BASE_URL"])
+
+
+def _step_context(code: str, step_no: int):
+    user = current_user()
+    course = course_for_student(db_session(), user.id)
+    version = _version(code, user.id, course.id if course else None) if course else None
+    if not course or not version:
+        return None
+    steps = normalize_steps(version.definition)
+    if step_no < 0 or step_no >= len(steps):
+        return None
+    progress = db_session().scalar(select(StudentExperimentProgress).where(
+        StudentExperimentProgress.course_id == course.id,
+        StudentExperimentProgress.student_id == user.id,
+        StudentExperimentProgress.experiment_version_id == version.id,
+    ))
+    if not progress or not progress.selected:
+        return None
+    draft = db_session().scalar(select(ReportDraft).where(
+        ReportDraft.course_id == course.id,
+        ReportDraft.student_id == user.id,
+        ReportDraft.experiment_version_id == version.id,
+    ))
+    return user, course, version, steps[step_no], progress, draft
+
+
+@bp.get("/experiment/<code>/progress")
+@role_required("student")
+def experiment_progress(code):
+    user = current_user()
+    course = course_for_student(db_session(), user.id)
+    version = _version(code, user.id, course.id if course else None) if course else None
+    if not course or not version:
+        return {"error": "实验不存在"}, 404
+    progress = db_session().scalar(select(StudentExperimentProgress).where(
+        StudentExperimentProgress.course_id == course.id,
+        StudentExperimentProgress.student_id == user.id,
+        StudentExperimentProgress.experiment_version_id == version.id,
+    ))
+    steps = normalize_steps(version.definition)
+    completed_steps = list(progress.completed_steps or []) if progress else []
+    current_step = next((step["index"] for step in steps if step.get("required", True) and step["index"] not in completed_steps), len(steps) - 1 if steps else 0)
+    return jsonify({
+        "selected": bool(progress and progress.selected),
+        "completed_steps": completed_steps,
+        "step_data": dict(progress.step_data or {}) if progress else {},
+        "level_completed": bool(progress and progress.completed_at),
+        "current_step": current_step,
+        "step_count": len(steps),
+    })
+
+
+@bp.put("/experiment/<code>/steps/<int:step_no>")
+@role_required("student")
+def save_experiment_step(code, step_no):
+    context = _step_context(code, step_no)
+    if not context:
+        return {"error": "步骤不存在或尚未选关"}, 404
+    user, course, version, step, _, draft_state = context
+    if draft_state and draft_state.status != "active":
+        return {"error": "正式报告已冻结；如需修改实验数据，请先复制历史报告为新草稿"}, 409
+    payload = request.get_json(silent=True) or {}
+    clean_data = clean_step_data(step, payload.get("data"))
+    completed = bool(payload.get("completed"))
+    with transaction() as tx:
+        progress = get_progress(tx, course.id, user.id, version.id)
+        current = dict(progress.step_data or {})
+        previous_item = dict(current.get(str(step_no)) or {})
+        item = {**previous_item, "data": clean_data, "image_hashes": list(previous_item.get("image_hashes") or [])}
+        completed_steps = set(int(value) for value in (progress.completed_steps or []) if str(value).isdigit())
+        steps = normalize_steps(version.definition)
+        first_incomplete = next((candidate["index"] for candidate in steps if candidate.get("required", True) and candidate["index"] not in completed_steps), len(steps))
+        if step_no > first_incomplete and step_no not in completed_steps:
+            return jsonify({"error": "请先完成当前小关卡", "current_step": first_incomplete}), 409
+        errors = validate_step(step, clean_data, item["image_hashes"], item.get("fit_result")) if completed else []
+        if errors:
+            return jsonify({"error": errors[0]["message"], "validation_errors": errors, "current_step": first_incomplete}), 422
+        current[str(step_no)] = item
+        if completed:
+            completed_steps.add(step_no)
+        else:
+            completed_steps.discard(step_no)
+        if previous_item.get("data") != clean_data:
+            for fit_step in steps:
+                if fit_step.get("kind") != "fit" or fit_step.get("fit_config", {}).get("source_step_id") != step.get("id"):
+                    continue
+                fit_item = dict(current.get(str(fit_step["index"])) or {})
+                if fit_item.get("fit_result"):
+                    fit_item.pop("fit_result", None); fit_item.pop("fallback_chart_hash", None)
+                    current[str(fit_step["index"])] = fit_item; completed_steps.discard(fit_step["index"])
+        progress.step_data = current
+        progress.completed_steps = sorted(completed_steps)
+        required_steps = [candidate["index"] for candidate in steps if candidate.get("required", True)]
+        level_completed = bool(required_steps) and all(item in completed_steps for item in required_steps)
+        if level_completed:
+            progress.completed_at = progress.completed_at or datetime.now(timezone.utc)
+        else:
+            progress.completed_at = None
+        draft = tx.scalar(select(ReportDraft).where(ReportDraft.course_id == course.id, ReportDraft.student_id == user.id, ReportDraft.experiment_version_id == version.id))
+        report_synced = True
+        if draft and draft.status == "active":
+            report_synced = update_report_from_step(draft, step, step_no, clean_data, item["image_hashes"], item.get("fit_result"), item.get("fallback_chart_hash", ""), bool(payload.get("force_sync")))
+        next_step = next((candidate["index"] for candidate in steps if candidate.get("required", True) and candidate["index"] not in completed_steps), len(steps) - 1 if steps else 0)
+        response = {"completed_steps": progress.completed_steps, "level_completed": level_completed, "step_data": progress.step_data, "current_step": next_step, "report_sync_conflict": not report_synced}
+    return jsonify(response)
+
+
+@bp.post("/experiment/<code>/steps/<int:step_no>/image")
+@role_required("student")
+def upload_experiment_step_image(code, step_no):
+    context = _step_context(code, step_no)
+    if not context:
+        return {"error": "步骤不存在或尚未选关"}, 404
+    user, course, version, step, _, draft_state = context
+    if draft_state and draft_state.status != "active":
+        return {"error": "正式报告已冻结；如需补充图片，请先复制历史报告为新草稿"}, 409
+    if not any(field.get("type") == "image" for field in step.get("fields", [])):
+        return {"error": "当前步骤未配置图片上传"}, 400
+    upload = request.files.get("image")
+    if not upload or not upload.filename:
+        return {"error": "请选择图片"}, 400
+    try:
+        asset_hash = save_upload(upload, IMAGE_UPLOADS)
+        with transaction() as tx:
+            progress = get_progress(tx, course.id, user.id, version.id)
+            current = dict(progress.step_data or {})
+            item = dict(current.get(str(step_no)) or {"data": {}, "image_hashes": []})
+            item["image_hashes"] = list(dict.fromkeys([*(item.get("image_hashes") or []), asset_hash]))
+            current[str(step_no)] = item
+            progress.step_data = current
+            assets = list(dict.fromkeys([*(progress.asset_hashes or []), asset_hash]))
+            progress.asset_hashes = assets
+            draft = tx.scalar(select(ReportDraft).where(ReportDraft.course_id == course.id, ReportDraft.student_id == user.id, ReportDraft.experiment_version_id == version.id))
+            if draft and draft.status == "active":
+                draft.asset_hashes = list(dict.fromkeys([*(draft.asset_hashes or []), asset_hash]))
+                update_report_from_step(draft, step, step_no, item.get("data") or {}, item["image_hashes"], item.get("fit_result"), item.get("fallback_chart_hash", ""))
+        return jsonify({"asset_hash": asset_hash, "url": url_for("auth.media", sha256=asset_hash)})
+    except ValueError as exc:
+        return {"error": str(exc)}, 400
+
+
+@bp.post("/experiment/<code>/steps/<int:step_no>/fit-result")
+@role_required("student")
+def save_experiment_fit_result(code, step_no):
+    context = _step_context(code, step_no)
+    if not context:
+        return {"error": "步骤不存在或尚未选关"}, 404
+    user, course, version, step, _, draft_state = context
+    if draft_state and draft_state.status != "active":
+        return {"error": "正式报告已冻结；如需重新拟合，请先复制历史报告为新草稿"}, 409
+    if step.get("kind") != "fit":
+        return {"error": "当前步骤不是拟合关卡"}, 400
+    try:
+        fit_result = validate_fit_result((request.get_json(silent=True) or {}).get("result") or {})
+        fit_result["source"] = "browser"
+        with transaction() as tx:
+            progress = get_progress(tx, course.id, user.id, version.id)
+            current = dict(progress.step_data or {}); item = dict(current.get(str(step_no)) or {"data": {}, "image_hashes": []})
+            item["fit_result"] = fit_result; item.pop("fallback_chart_hash", None); current[str(step_no)] = item; progress.step_data = current
+            draft = tx.scalar(select(ReportDraft).where(ReportDraft.course_id == course.id, ReportDraft.student_id == user.id, ReportDraft.experiment_version_id == version.id))
+            if draft and draft.status == "active": update_report_from_step(draft, step, step_no, item.get("data") or {}, item.get("image_hashes") or [], fit_result)
+        return jsonify({"result": fit_result})
+    except ValueError as exc:
+        return {"error": str(exc)}, 400
+
+
+@bp.post("/experiment/<code>/steps/<int:step_no>/fit-fallback")
+@role_required("student")
+def save_experiment_fit_fallback(code, step_no):
+    context = _step_context(code, step_no)
+    if not context:
+        return {"error": "步骤不存在或尚未选关"}, 404
+    user, course, version, step, _, draft_state = context
+    if draft_state and draft_state.status != "active":
+        return {"error": "正式报告已冻结；如需重新拟合，请先复制历史报告为新草稿"}, 409
+    if step.get("kind") != "fit" or not step.get("fit_config", {}).get("allow_excel_fallback"):
+        return {"error": "当前步骤未开放 Excel 兜底"}, 400
+    chart = request.files.get("chart")
+    if not chart or not chart.filename:
+        return {"error": "请上传 Excel 生成的拟合结果图"}, 400
+    try:
+        parameters = json.loads(request.form.get("parameters") or "{}")
+        fit_result = validate_fit_result({"code": "", "formula": step.get("fit_config", {}).get("formula", ""), "initial_parameters": {}, "final_parameters": parameters, "metrics": {}})
+        fit_result["source"] = "excel_fallback"
+        chart_hash = save_upload(chart, IMAGE_UPLOADS)
+        with transaction() as tx:
+            progress = get_progress(tx, course.id, user.id, version.id)
+            current = dict(progress.step_data or {}); item = dict(current.get(str(step_no)) or {"data": {}, "image_hashes": []})
+            item["fit_result"] = fit_result; item["fallback_chart_hash"] = chart_hash; current[str(step_no)] = item; progress.step_data = current
+            progress.asset_hashes = list(dict.fromkeys([*(progress.asset_hashes or []), chart_hash]))
+            draft = tx.scalar(select(ReportDraft).where(ReportDraft.course_id == course.id, ReportDraft.student_id == user.id, ReportDraft.experiment_version_id == version.id))
+            if draft and draft.status == "active":
+                draft.asset_hashes = list(dict.fromkeys([*(draft.asset_hashes or []), chart_hash]))
+                update_report_from_step(draft, step, step_no, item.get("data") or {}, item.get("image_hashes") or [], fit_result, chart_hash)
+        return jsonify({"result": fit_result, "chart_hash": chart_hash, "chart_url": url_for("auth.media", sha256=chart_hash)})
+    except (ValueError, json.JSONDecodeError) as exc:
+        return {"error": str(exc)}, 400
 
 
 def _draft_context(code: str):
@@ -462,6 +748,15 @@ def submit_experiment(code):
     if not quiz or not quiz.completed_at or len(quiz.answers or {}) != 10:
         flash("请先完成并提交十道预习题。", "error")
         return redirect(url_for("student.experiment", code=code))
+    progress = db_session().scalar(select(StudentExperimentProgress).where(
+        StudentExperimentProgress.course_id == course.id,
+        StudentExperimentProgress.student_id == user.id,
+        StudentExperimentProgress.experiment_version_id == version.id,
+    ))
+    required_steps = [item["index"] for item in normalize_steps(version.definition) if item.get("required", True)]
+    if not progress or not required_steps or not all(item in set(progress.completed_steps or []) for item in required_steps):
+        flash("请先完成实验操作中的全部必做小关卡。", "error")
+        return redirect(url_for("student.experiment", code=code) + "#operation")
     try:
         draft_id = request.form.get("draft_id", "").strip()
         if draft_id:
@@ -477,8 +772,7 @@ def submit_experiment(code):
             payload = {k: request.form.get(k, "").strip() for k in ("abstract", "principle", "raw_data", "discussion", "conclusion")}
             file_hashes = [save_upload(item, STUDENT_ATTACHMENT_UPLOADS) for item in request.files.getlist("attachments") if item and item.filename]
             payload.update({"result_value": request.form.get("result_value"), "fit_result": fit_result, "steps_complete": request.form.get("steps_complete") == "yes", "file_hashes": file_hashes})
-        if not payload["steps_complete"]:
-            raise ValueError("必须确认已完成全部必做步骤")
+        payload["steps_complete"] = True
         revision, _ = submit(
             user.id,
             version,
@@ -492,7 +786,7 @@ def submit_experiment(code):
                 if locked and locked.status == "active":
                     locked.status = "locked"
                     locked.updated_at = datetime.now(timezone.utc)
-        flash("提交成功。报告修订已保存；学生端仅展示预习题成绩。", "success")
+        flash("本关实验已完成，正式报告修订已保存。", "success")
         return redirect(url_for("student.home", certificate=code))
     except (ValueError, TypeError, json.JSONDecodeError) as exc:
         flash(str(exc), "error")

@@ -4,10 +4,10 @@
 <section class="teacher-v4-page teacher-analytics-page page-pad" data-teacher-analytics data-api-url="{{ url_for('api.teacher_analytics') }}">
   <header class="teacher-v4-heading analytics-heading">
     <div><span class="eyebrow">LEARNING OBSERVATORY</span><h1>实验学情观测台</h1><p>在一个页面掌握班级进度、实验任务完成率和学生个体动态。</p></div>
-    <div class="analytics-heading-tools"><button class="secondary-button analytics-filter-toggle" type="button" data-analytics-filter-toggle aria-expanded="false" aria-controls="analyticsFilters"><i data-lucide="sliders-horizontal"></i> 筛选</button><nav class="teacher-subnav" aria-label="审核工作区"><a href="{{ url_for('teacher.dashboard') }}"><i data-lucide="inbox"></i> 审核队列</a><a class="active" href="{{ url_for('teacher.analytics') }}"><i data-lucide="chart-no-axes-combined"></i> 学情观测</a></nav></div>
+    <div class="analytics-heading-tools"><button class="secondary-button analytics-filter-toggle" type="button" data-analytics-filter-toggle data-open-layer="analytics-filters" aria-haspopup="dialog" aria-expanded="false"><i data-lucide="sliders-horizontal"></i> 筛选</button><nav class="teacher-subnav" aria-label="审核工作区"><a href="{{ url_for('teacher.dashboard') }}"><i data-lucide="inbox"></i> 审核队列</a><a class="active" href="{{ url_for('teacher.analytics') }}"><i data-lucide="chart-no-axes-combined"></i> 学情观测</a></nav></div>
   </header>
 
-  <form class="teacher-surface analytics-filters" id="analyticsFilters" method="get" data-analytics-filters>
+  <div class="layer-backdrop drawer-layer is-hidden" data-layer="analytics-filters" aria-hidden="true"><aside class="layer-panel drawer-panel" role="dialog" aria-modal="true" aria-labelledby="analyticsFiltersTitle"><header class="layer-header"><div><span class="eyebrow">FILTERS</span><h2 id="analyticsFiltersTitle">筛选学情范围</h2></div><button class="layer-close" type="button" data-close-layer aria-label="关闭筛选"><i data-lucide="x"></i></button></header><p class="layer-description">筛选只改变当前观测范围，导出报表使用同一数据快照。</p><form class="teacher-surface analytics-filters is-open" id="analyticsFilters" method="get" data-analytics-filters>
     <label>班级<select name="course" data-analytics-course>{% for course in analytics.courses %}<option value="{{ course.id }}" {{ 'selected' if analytics.course and course.id == analytics.course.id }}>{{ course.name }}</option>{% endfor %}</select></label>
     <label>实验项目<select name="experiment"><option value="">全部实验</option>{% for item in analytics.experiment_stats %}<option value="{{ item.experiment_id }}" {{ 'selected' if analytics.filters.experiment_id == item.experiment_id }}>{{ item.experiment }}</option>{% endfor %}</select></label>
     <label>任务类型<select name="task_type"><option value="">全部任务</option><option value="prestudy" {{ 'selected' if analytics.filters.task_type == 'prestudy' }}>预习</option><option value="report" {{ 'selected' if analytics.filters.task_type == 'report' }}>报告</option></select></label>
@@ -15,7 +15,7 @@
     <label>开始日期<input name="submitted_from" type="date" value="{{ request.args.get('submitted_from','') }}"></label>
     <label>结束日期<input name="submitted_to" type="date" value="{{ request.args.get('submitted_to','') }}"></label>
     <div class="analytics-filter-actions"><button class="primary" type="submit">应用筛选</button><button class="secondary-button" type="submit" formaction="{{ url_for('teacher.export_analytics') }}"><i data-lucide="file-spreadsheet"></i> 导出报表</button></div>
-  </form>
+  </form></aside></div>
   <div class="analytics-live"><span class="live-dot"></span><span data-analytics-sync>每 30 秒自动刷新</span><button type="button" data-analytics-refresh><i data-lucide="refresh-cw"></i> 立即刷新</button></div>
 
   <section class="teacher-surface analytics-overview-panel" id="classOverview">

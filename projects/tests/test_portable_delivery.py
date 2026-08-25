@@ -1,5 +1,6 @@
 from __future__ import annotations
 import subprocess, sys, zipfile
+from datetime import date
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -7,7 +8,8 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def test_delivery_package_is_clean():
     result = subprocess.run([sys.executable, "scripts/package_docker.py"], cwd=ROOT, check=True, capture_output=True, text=True)
-    package = next((ROOT / "dist").glob("wuda-docker-*.zip"))
+    package = ROOT / "dist" / f"wuda-docker-{date.today():%Y%m%d}.zip"
+    assert package.exists(), result.stdout
     with zipfile.ZipFile(package) as archive:
         names = set(archive.namelist())
         assert {"Dockerfile", "docker-compose.yml", ".env.example", "platform_app/models.py", "static/fonts/simhei.ttf", "static/quantum-platform.css", "static/platform.js"} <= names

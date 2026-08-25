@@ -31,6 +31,11 @@ TEACHING_MATERIAL_UPLOADS: UploadPolicy = {
     ".txt": frozenset({"text/plain"}),
     ".md": frozenset({"text/markdown", "text/plain"}),
 }
+REFERENCE_UPLOADS: UploadPolicy = {
+    **TEACHING_MATERIAL_UPLOADS,
+    ".ppt": frozenset({"application/vnd.ms-powerpoint", "application/octet-stream"}),
+    ".pptx": frozenset({"application/vnd.openxmlformats-officedocument.presentationml.presentation", "application/octet-stream"}),
+}
 STUDENT_ATTACHMENT_UPLOADS: UploadPolicy = {
     **IMAGE_UPLOADS,
     ".pdf": frozenset({"application/pdf"}),

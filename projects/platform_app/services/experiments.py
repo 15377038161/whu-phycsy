@@ -222,6 +222,7 @@ def restart_quiz(session, assignment: QuizAssignment, version: ExperimentVersion
 
 
 def publish_version(session, version: ExperimentVersion, actor_id: str):
+    from .progress import normalize_steps, validate_step_contract
     if version.status != "draft":
         raise ValueError("只能发布草稿版本")
     if len(version.definition.get("questions", [])) < 40:
@@ -236,6 +237,7 @@ def publish_version(session, version: ExperimentVersion, actor_id: str):
         raise ValueError("发布前至少需要 10 个母题方向，并且每个方向至少有 2 道不同考法")
     if not version.definition.get("steps") or version.definition.get("reference_value") is None:
         raise ValueError("发布前必须配置步骤和参考结果")
+    validate_step_contract(normalize_steps(version.definition))
     version.status = "published"
     version.published_at = datetime.now(timezone.utc)
     experiment = session.get(Experiment, version.experiment_id)
@@ -283,15 +285,18 @@ def seed_defaults(password_hash):
                 if existing:
                     latest = session.scalar(select(ExperimentVersion).where(ExperimentVersion.experiment_id == existing.id, ExperimentVersion.status == "published").order_by(ExperimentVersion.version_no.desc()))
                     question_upgrade = latest and int(latest.definition.get("question_bank_revision", 0)) < 4
-                    steps_upgrade = latest and int(latest.definition.get("operation_steps_revision", 0)) < 2
-                    if latest and (question_upgrade or steps_upgrade):
+                    steps_upgrade = latest and int(latest.definition.get("operation_steps_revision", 0)) < 3
+                    materials_upgrade = latest and (not latest.definition.get("materials") or not latest.definition.get("step_specs"))
+                    if latest and (question_upgrade or steps_upgrade or materials_upgrade):
                         newest_no = session.scalar(select(func.max(ExperimentVersion.version_no)).where(ExperimentVersion.experiment_id == existing.id)) or latest.version_no
                         upgraded = deepcopy(latest.definition)
                         source_definition = definition(item)
                         if question_upgrade:
                             upgraded.update({"questions": source_definition["questions"], "question_bank_revision": 4})
                         if steps_upgrade:
-                            upgraded.update({"steps": source_definition["steps"], "operation_steps_revision": 2})
+                            upgraded.update({"steps": source_definition["steps"], "step_specs": source_definition["step_specs"], "operation_steps_revision": 3})
+                        if materials_upgrade:
+                            upgraded.update({"materials": source_definition["materials"], "step_specs": source_definition["step_specs"]})
                         session.add(ExperimentVersion(experiment_id=existing.id, version_no=newest_no + 1, status="published", definition=upgraded, published_at=datetime.now(timezone.utc)))
             for course in session.scalars(select(Course)).all():
                 ensure_course_experiments(session, course)
@@ -301,16 +306,10 @@ def seed_defaults(password_hash):
         if production and len(admin_password) < 12: raise RuntimeError("INITIAL_ADMIN_PASSWORD must contain at least 12 characters on first production start")
         admin = User(id="T001", username=os.getenv("INITIAL_ADMIN_USERNAME", "admin"), name="实验教师", role="teacher", password_hash=password_hash(admin_password))
         session.add(admin)
-        session.flush()
         course = None
         if not production:
-            student = User(id="S001", username="S001", name="演示学生", role="student", password_hash=password_hash("123456"))
-            session.add(student)
-            session.flush()
-            course = Course(id="C001", teacher_id=admin.id, name="量子实验演示班")
-            session.add(course)
-            session.flush()
-            session.add(Enrollment(course_id=course.id, student_id=student.id))
+            student = User(id="S001", username="S001", name="演示学生", role="student", password_hash=password_hash("123456")); course = Course(id="C001", teacher_id=admin.id, name="量子实验演示班")
+            session.add_all([student, course, Enrollment(course_id=course.id, student_id=student.id)])
         for order, item in enumerate(EXPERIMENTS, 1):
             exp = Experiment(code=item["code"], title=item["title"], order_no=order)
             session.add(exp)

@@ -11,24 +11,24 @@ from .fitting import validate_fit_result
 from .scoring import fingerprint
 
 
-def accuracy_grade(reference_value, result_value: float) -> tuple[float | None, int | None]:
-    """Deterministic accuracy suggestion for teachers only; never shown to students."""
+def accuracy_grade(result_value: float, reference_value: object) -> tuple[float, int]:
+    """Return the teacher-only error percentage and the agreed automatic score."""
     try:
         reference = float(reference_value)
-    except (TypeError, ValueError):
-        return None, None
-    if not math.isfinite(reference) or reference == 0 or not math.isfinite(result_value):
-        return None, None
-    error = abs(result_value - reference) / abs(reference) * 100
-    if error <= 5:
-        return error, 100
-    if error <= 7:
-        return error, 90
-    if error <= 10:
-        return error, 85
-    if error <= 15:
-        return error, 80
-    return error, 70
+    except (TypeError, ValueError) as exc:
+        raise ValueError("当前实验未配置可用的参考值，无法自动计算数据准确度") from exc
+    if not math.isfinite(reference) or reference == 0:
+        raise ValueError("当前实验参考值必须是非零有限数，无法自动计算数据准确度")
+    error_percent = round(abs(result_value - reference) / abs(reference) * 100, 10)
+    if error_percent <= 5:
+        return error_percent, 100
+    if error_percent <= 7:
+        return error_percent, 90
+    if error_percent <= 10:
+        return error_percent, 85
+    if error_percent <= 15:
+        return error_percent, 80
+    return error_percent, 70
 
 
 def submit(
@@ -57,14 +57,14 @@ def submit(
             )
             .order_by(SubmissionRevision.revision_no.desc())
         )
+        relative_error, automatic_score = accuracy_grade(value, (version.definition or {}).get("reference_value"))
         revision_no = (previous.revision_no if previous else 0) + 1
-        relative_error, deterministic_score = accuracy_grade((version.definition or {}).get("reference_value"), value)
-        revision = SubmissionRevision(request_id=request_id, student_id=student_id, course_id=course_id, experiment_version_id=version.id, revision_no=revision_no, payload=payload, result_value=value, relative_error=relative_error if relative_error is not None else 0.0, deterministic_score=deterministic_score if deterministic_score is not None else 0, passed=False, fingerprint=fp, evaluation_id=None, supersedes_id=previous.id if previous else None)
+        revision = SubmissionRevision(request_id=request_id, student_id=student_id, course_id=course_id, experiment_version_id=version.id, revision_no=revision_no, payload=payload, result_value=value, relative_error=relative_error, deterministic_score=automatic_score, passed=True, fingerprint=fp, evaluation_id=None, supersedes_id=previous.id if previous else None)
         session.add(revision)
         session.flush()
         if previous and previous.status == "submitted":
             previous.status = "superseded"
-        session.add(AuditEvent(actor_id=student_id, action="submission.create", entity_type="submission", entity_id=revision.id, detail={"revision": revision_no, "fingerprint": fp, "course_id": course_id, "grading": "teacher_only"}))
+        session.add(AuditEvent(actor_id=student_id, action="submission.create", entity_type="submission", entity_id=revision.id, detail={"revision": revision_no, "fingerprint": fp, "course_id": course_id, "automatic_accuracy_score": automatic_score, "relative_error_percent": relative_error}))
         return revision, False
 
 

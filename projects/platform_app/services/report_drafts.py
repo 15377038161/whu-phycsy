@@ -187,6 +187,7 @@ def validate_document(document: Any, allowed_assets: Iterable[str] = ()) -> dict
         "fit_result": validate_fit_result(document.get("fit_result") or {}),
         "result_value": _clean_text(document.get("result_value"), 100),
         "steps_complete": bool(document.get("steps_complete")),
+        "system_sync": {str(key)[:160]: str(value)[:64] for key, value in (document.get("system_sync") or {}).items()} if isinstance(document.get("system_sync"), dict) else {},
     }
     sections = document.get("sections")
     if not isinstance(sections, list):

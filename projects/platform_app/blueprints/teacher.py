@@ -4,6 +4,7 @@ from copy import deepcopy
 import json
 import uuid
 from datetime import datetime, time, timezone
+from pathlib import Path
 
 from flask import Blueprint, current_app, flash, redirect, render_template, request, send_file, url_for
 from sqlalchemy import func, select
@@ -14,11 +15,12 @@ from ..models import AuditEvent, Course, CourseExperiment, Enrollment, Experimen
 from auth_service import password_hash
 from ..services.accounts import _validate_new_password, reset_student_password
 from ..services.experiments import copy_experiment, ensure_course_experiments, publish_version
-from ..services.files import IMAGE_UPLOADS, TEACHING_MATERIAL_UPLOADS, VIDEO_UPLOADS, save_upload
+from ..services.files import IMAGE_UPLOADS, REFERENCE_UPLOADS, TEACHING_MATERIAL_UPLOADS, VIDEO_UPLOADS, save_upload
 from ..services.course_materials import extract_teaching_material
 from ..services.reporting import build_docx, build_pdf, report_document
 from ..services.grade_export import build_grade_workbook
 from ..services.student_roster import parse_student_roster
+from ..services.progress import normalize_steps, validate_step_contract
 from ..teacher_analytics import build_teacher_analytics_workbook, get_teacher_analytics
 from .auth import current_user, role_required
 from ai_service import generate_experiment_draft, generate_question_bank
@@ -228,8 +230,9 @@ def students():
                 name = request.form.get("course_name", "").strip()
                 if not name:
                     raise ValueError("班级名称不能为空")
+                required_experiments = max(1, min(5, int(request.form.get("min_experiments_required", "3") or 3)))
                 with transaction() as tx:
-                    course = Course(id=str(uuid.uuid4()), teacher_id=teacher.id, name=name[:160])
+                    course = Course(id=str(uuid.uuid4()), teacher_id=teacher.id, name=name[:160], min_experiments_required=required_experiments)
                     tx.add(course)
                     tx.flush()
                     ensure_course_experiments(tx, course)
@@ -435,19 +438,42 @@ def edit_experiment(experiment_id):
         try:
             value = float(request.form.get("reference_value", ""))
             steps = [line.strip() for line in request.form.get("steps", "").splitlines() if line.strip()]
+            step_specs = json.loads(request.form.get("step_specs_json", "[]") or "[]")
+            if step_specs and (not isinstance(step_specs, list) or len([item for item in step_specs if isinstance(item, dict) and item.get("kind") != "fit"]) != len(steps)):
+                raise ValueError("步骤配置中的非拟合关卡必须与文字步骤数量一致")
+            if not step_specs:
+                step_specs = [{"id": f"step_{index + 1}", "title": f"实验步骤 {index + 1}", "kind": "form", "text": text, "required": True, "fields": [], "fit_hint": "", "report_section": "raw_data"} for index, text in enumerate(steps)]
             questions = json.loads(request.form.get("questions_json", "[]"))
             if not isinstance(questions, list): raise ValueError("题库必须是 JSON 数组")
             video_hash = version.definition.get("demo_video_hash", "")
             cover_hash = version.definition.get("cover_image_hash", "")
+            materials = list(version.definition.get("materials") or [])
             video = request.files.get("demo_video")
             if video and video.filename:
                 video_hash = save_upload(video, VIDEO_UPLOADS)
             cover = request.files.get("cover_image")
             if cover and cover.filename:
                 cover_hash = save_upload(cover, IMAGE_UPLOADS)
+            preview_uploads = [item for item in request.files.getlist("reference_previews") if item and item.filename]
+            preview_hashes = {}
+            for preview in preview_uploads:
+                if Path(preview.filename).suffix.lower() != ".pdf":
+                    raise ValueError("PPT 配套预览文件必须是 PDF")
+                preview_hashes[Path(preview.filename).stem.lower()] = save_upload(preview, REFERENCE_UPLOADS)
+            for material in request.files.getlist("reference_materials"):
+                if material and material.filename:
+                    asset_hash = save_upload(material, REFERENCE_UPLOADS)
+                    suffix = Path(material.filename).suffix.lower().lstrip(".")
+                    preview_hash = asset_hash if suffix == "pdf" else preview_hashes.get(Path(material.filename).stem.lower(), "")
+                    if suffix in {"ppt", "pptx"} and not preview_hash and len(preview_hashes) == 1:
+                        preview_hash = next(iter(preview_hashes.values()))
+                    materials.append({"title": material.filename[:120], "asset_hash": asset_hash, "media_type": suffix, "preview_asset_hash": preview_hash})
+            canonical_steps = normalize_steps({**version.definition, "steps": steps, "step_specs": step_specs, "formula": request.form.get("formula", "").strip()})
+            validate_step_contract(canonical_steps)
+            step_specs = [{key: value for key, value in item.items() if key != "index"} for item in canonical_steps]
             with transaction() as tx:
                 target = tx.get(ExperimentVersion, version.id)
-                target.definition = {**target.definition, "summary": request.form.get("summary", "").strip(), "principle": request.form.get("principle", "").strip(), "apparatus": request.form.get("apparatus", "").strip(), "reference_value": value, "reference_unit": request.form.get("reference_unit", "").strip(), "formula": request.form.get("formula", "").strip(), "steps": steps, "questions": questions, "demo_video_hash": video_hash, "cover_image_hash": cover_hash}
+                target.definition = {**target.definition, "summary": request.form.get("summary", "").strip(), "principle": request.form.get("principle", "").strip(), "apparatus": request.form.get("apparatus", "").strip(), "reference_value": value, "reference_unit": request.form.get("reference_unit", "").strip(), "formula": request.form.get("formula", "").strip(), "steps": steps, "step_specs": step_specs, "questions": questions, "demo_video_hash": video_hash, "cover_image_hash": cover_hash, "materials": materials}
                 db_exp = tx.get(Experiment, experiment_id)
                 db_exp.title = request.form.get("title", exp.title).strip()
                 if request.form.get("intent") == "publish":

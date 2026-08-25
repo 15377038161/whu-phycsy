@@ -144,8 +144,38 @@ def question_bank(exp: dict) -> list[dict]:
 
 def definition(exp: dict) -> dict:
     data = {k: v for k, v in exp.items() if k not in {"code", "title", "facts"}}
+    material_paths = {
+        "ION": "materials/ion-trap-202510.pdf",
+        "QKD": "materials/qkd-material.pdf",
+        "ENT": "materials/entanglement-20250429.pdf",
+        "NV": "materials/nv-2024-08-30.pdf",
+        "SPI": "materials/single-pixel-material.pdf",
+    }
+    data["materials"] = ([{"title": "实验讲义 PDF", "static_path": material_paths[exp["code"]], "media_type": "pdf"}] if exp.get("code") in material_paths else [])
+    fit_axes = {
+        "ION": (("omega_sq", "驱动角频率平方 Ω²", "10⁶ rad²/s²"), ("displacement", "平衡位移 u₀", "mm")),
+        "QKD": (("error_bits", "错误比特数", "bit"), ("sifted_bits", "筛后比特数", "bit")),
+        "ENT": (("angle", "偏振角", "°"), ("coincidence", "符合计数", "count")),
+        "NV": (("frequency", "微波频率", "GHz"), ("fluorescence", "荧光计数", "count")),
+        "SPI": (("pattern", "图案编号", ""), ("bucket_signal", "桶探测信号", "a.u.")),
+    }
+    x_axis, y_axis = fit_axes.get(exp["code"], (("x", "自变量 x", ""), ("y", "因变量 y", "")))
+    operation_steps = []
+    for index, text in enumerate(exp["steps"]):
+        fields = []
+        if index == 0:
+            fields.append({"key": "safety_check", "label": "设备与安全检查", "type": "single_choice", "required": True, "options": ["已逐项检查，状态正常", "发现异常，已停止并报告教师"]})
+        if index == 3:
+            fields.append({"key": "measurements", "label": "原始测量数据", "type": "table", "required": True, "min_rows": 2, "columns": [{"key": x_axis[0], "label": x_axis[1], "unit": x_axis[2]}, {"key": y_axis[0], "label": y_axis[1], "unit": y_axis[2]}]})
+        if index in {1, 2, 3, 4}:
+            fields.append({"key": "step_images", "label": "本步骤实验图片", "type": "image", "required": False, "max_count": 6})
+        if index in {2, 4}:
+            fields.append({"key": "observation", "label": "观察与异常记录", "type": "text", "required": index == 4, "placeholder": "记录观察现象、异常情况或处理说明"})
+        operation_steps.append({"id": f"step_{index + 1}", "title": f"第 {index + 1} 小关", "kind": "form", "text": text, "required": True, "fields": fields, "fit_hint": "", "report_section": "raw_data" if index == 3 else "steps"})
+    operation_steps.append({"id": "fit_results", "title": "数据拟合", "kind": "fit", "text": "系统将自动读取前一阶段的原始测量数据。请完成在线拟合并检查参数与图表；在线环境不可用时，可提交 Excel 拟合参数和结果图。", "required": True, "fields": [], "fit_hint": "进入实验闯关后会在后台预加载拟合环境，不需要重复录入原始数据。", "report_section": "fit", "fit_config": {"source_step_id": "step_4", "source_field_key": "measurements", "x_column": x_axis[0], "y_column": y_axis[0], "template": data.get("fit_template", "linear"), "formula": data.get("formula", ""), "required": True, "allow_excel_fallback": True}})
+    data["step_specs"] = operation_steps
     data["questions"] = question_bank(exp)
     data["question_bank_revision"] = 4
-    data["operation_steps_revision"] = 2
+    data["operation_steps_revision"] = 3
     data["report_sections"] = ["摘要", "实验目的", "仪器设备", "实验原理", "实验步骤", "原始数据", "拟合与参数", "误差分析", "讨论", "结论", "思考题", "参考资料"]
     return data

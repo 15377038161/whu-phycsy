@@ -1,5 +1,5 @@
 from __future__ import annotations
-import io, json, uuid, zipfile
+import io, json, re, uuid, zipfile
 from copy import deepcopy
 from pathlib import Path
 
@@ -12,8 +12,10 @@ from ai_service import _validate_question_bank
 from platform_app import create_app
 from platform_app.content import EXPERIMENTS, definition
 from platform_app.db import db_session, transaction
-from platform_app.models import AuditEvent, Course, CourseExperiment, Enrollment, Experiment, ExperimentDraft, ExperimentVersion, FileAsset, QuizAssignment, ReportDraft, Review, SubmissionRevision, User
+from platform_app.models import AuditEvent, Course, CourseExperiment, Enrollment, Experiment, ExperimentDraft, ExperimentVersion, FileAsset, QuizAssignment, ReportDraft, Review, StudentExperimentProgress, SubmissionRevision, User
 from platform_app.services.scoring import fingerprint
+from platform_app.services.submissions import accuracy_grade
+from platform_app.services.progress import normalize_steps
 
 
 @pytest.fixture()
@@ -28,7 +30,14 @@ def client(app): return app.test_client()
 
 
 def login(client, username="S001", password="123456"):
-    return client.post("/login", data={"username": username, "password": password}, follow_redirects=True)
+    response = client.post("/login", data={"username": username, "password": password, "csrf_token": re.search(r'name="csrf_token" value="([^"]+)', client.get("/login").get_data(as_text=True)).group(1)}, follow_redirects=True)
+    if username != "admin":
+        page = response.get_data(as_text=True)
+        token = re.search(r'data-csrf-token="([^"]+)', page).group(1)
+        ids = re.findall(r'name="selected_versions" value="([^"]+)', page)[:3]
+        if ids:
+            response = client.post("/student/level-selection", data={"csrf_token": token, "selected_versions": ids}, follow_redirects=True)
+    return response
 
 
 def test_fingerprint_is_canonical_and_versioned():
@@ -36,6 +45,15 @@ def test_fingerprint_is_canonical_and_versioned():
     b = fingerprint("v1", {"a": 1, "b": 2}, ["a", "z"])
     assert a == b
     assert a != fingerprint("v2", {"a": 1, "b": 2}, ["a", "z"])
+
+
+@pytest.mark.parametrize(("value", "error", "score"), [
+    (1.05, 5.0, 100), (1.07, 7.0, 90), (1.10, 10.0, 85),
+    (1.15, 15.0, 80), (1.151, 15.1, 70),
+])
+def test_automatic_accuracy_score_uses_teacher_confirmed_thresholds(value, error, score):
+    actual_error, actual_score = accuracy_grade(value, 1.0)
+    assert actual_error == pytest.approx(error) and actual_score == score
 
 
 def test_login_and_five_official_experiments(client):
@@ -103,7 +121,7 @@ def test_student_hall_lists_every_published_teacher_module(app, client):
         session.add(extra); session.flush()
         session.add(ExperimentVersion(experiment_id=extra.id, version_no=1, status="published", definition=dict(source.definition)))
     page = login(client).get_data(as_text=True)
-    assert "<h2>选择一关开始实验</h2>" in page and "无需按顺序，任选一关即可开始挑战" in page
+    assert "<h2>选择一关开始实验</h2>" in page and "6 个实验展厅" not in page
     assert "教师新增量子模块" in page and 'data-experiment-gallery' in page
     assert 'data-gallery-prev' in page and 'data-gallery-next' in page
     assert page.count('class="experiment-display-card') == 6
@@ -174,23 +192,73 @@ def _answer_quiz(app, client, code="ION"):
         quiz = db_session().scalar(select(QuizAssignment).where(QuizAssignment.student_id == "S001", QuizAssignment.experiment_version_id == version.id))
         data = {"action": "quiz", **{q["id"]: q["answer"] for q in quiz.questions}}
     client.post(f"/student/experiment/{code}", data=data)
+    page = client.get(f"/student/experiment/{code}").get_data(as_text=True)
+    token = re.search(r'data-csrf-token="([^"]+)', page).group(1)
+    with app.app_context():
+        version = db_session().scalar(select(ExperimentVersion).join(Experiment).where(Experiment.code == code, ExperimentVersion.status == "published"))
+        steps = normalize_steps(version.definition)
+    for step in steps:
+        data = {}
+        for field in step.get("fields", []):
+            if field["type"] == "single_choice": data[field["key"]] = field["options"][0]
+            elif field["type"] == "multiple_choice": data[field["key"]] = field["options"][:1]
+            elif field["type"] == "table": data[field["key"]] = [{column["key"]: str((row + 1) * (column_no + 1)) for column_no, column in enumerate(field["columns"])} for row in range(max(2, field["min_rows"]))]
+            elif field["type"] in {"text", "number"}: data[field["key"]] = "1" if field["type"] == "number" else "测试记录"
+        if step["kind"] == "fit":
+            saved = client.post(f"/student/experiment/{code}/steps/{step['index']}/fit-result", json={"result": {"code": "", "formula": "y=a*x+b", "initial_parameters": {"a": 1}, "final_parameters": {"a": 2}, "metrics": {"r2": .99}}}, headers={"X-CSRFToken": token})
+            assert saved.status_code == 200
+        completed = client.put(f"/student/experiment/{code}/steps/{step['index']}", json={"completed": True, "data": data}, headers={"X-CSRFToken": token})
+        assert completed.status_code == 200, completed.get_json()
 
 
 def _submit(client, code="ION", request_id=None, value="1.04"):
     return client.post(f"/student/experiment/{code}/submit", data={"request_id": request_id or str(uuid.uuid4()), "abstract": "完整摘要", "principle": "完整实验原理", "raw_data": "1,2\n2,4", "discussion": "误差来自读数和标定。", "conclusion": "完成实验并得到关键结果。", "result_value": value, "steps_complete": "yes", "fit_result": json.dumps({"code": "", "formula": "y=a*x+b", "initial_parameters": {"a": 1}, "final_parameters": {"a": 2}, "metrics": {"r2": .99}})}, follow_redirects=True)
 
 
-def test_submit_idempotency_has_no_machine_grade_and_teacher_review_stays_private(app, client):
+def test_required_fields_and_sequential_steps_are_server_enforced(app, client):
+    login(client); client.get("/student/experiment/ION")
+    page = client.get("/student/experiment/ION").get_data(as_text=True)
+    token = re.search(r'data-csrf-token="([^"]+)', page).group(1)
+    headers = {"X-CSRFToken": token}
+    missing = client.put("/student/experiment/ION/steps/0", json={"completed": True, "data": {}}, headers=headers)
+    assert missing.status_code == 422 and missing.get_json()["validation_errors"][0]["field"] == "safety_check"
+    skipped = client.put("/student/experiment/ION/steps/1", json={"completed": True, "data": {}}, headers=headers)
+    assert skipped.status_code == 409 and skipped.get_json()["current_step"] == 0
+    accepted = client.put("/student/experiment/ION/steps/0", json={"completed": True, "data": {"safety_check": "已逐项检查，状态正常"}}, headers=headers)
+    assert accepted.status_code == 200 and accepted.get_json()["current_step"] == 1
+
+
+def test_excel_fit_fallback_is_saved_and_synced_to_report(app, client):
+    login(client); _answer_quiz(app, client)
+    page = client.get("/student/experiment/ION").get_data(as_text=True)
+    token = re.search(r'data-csrf-token="([^"]+)', page).group(1)
+    with app.app_context():
+        version = db_session().scalar(select(ExperimentVersion).join(Experiment).where(Experiment.code == "ION", ExperimentVersion.status == "published"))
+        fit_step = next(step for step in normalize_steps(version.definition) if step["kind"] == "fit")
+    response = client.post(f"/student/experiment/ION/steps/{fit_step['index']}/fit-fallback", data={"parameters": json.dumps({"p1": 1.25, "p2": .4}), "chart": (io.BytesIO(b"excel chart"), "fit.png")}, content_type="multipart/form-data", headers={"X-CSRFToken": token})
+    assert response.status_code == 200 and response.get_json()["result"]["source"] == "excel_fallback"
+    with app.app_context():
+        progress = db_session().scalar(select(StudentExperimentProgress))
+        draft = db_session().scalar(select(ReportDraft))
+        assert progress.step_data[str(fit_step["index"])]["fallback_chart_hash"]
+        fit_blocks = next(section for section in draft.content["sections"] if section["id"] == "fit")["blocks"]
+        assert any("Excel 拟合结果图" in block.get("caption", "") for block in fit_blocks)
+
+
+def test_submit_idempotency_assigns_teacher_only_automatic_accuracy_score(app, client):
     login(client); _answer_quiz(app, client)
     request_id = str(uuid.uuid4()); first = _submit(client, request_id=request_id); second = _submit(client, request_id=request_id)
-    assert "学生端仅展示预习题成绩" in first.get_data(as_text=True)
+    assert "本关实验已完成" in first.get_data(as_text=True)
+    assert 'data-auto-open-modal="level-certificate"' in first.get_data(as_text=True)
     with app.app_context():
         rows = db_session().scalars(select(SubmissionRevision)).all()
-        assert len(rows) == 1 and rows[0].deterministic_score == 100 and abs(rows[0].relative_error - 4.0) < 1e-9 and rows[0].evaluation_id is None
+        assert len(rows) == 1 and rows[0].deterministic_score == 100 and rows[0].relative_error == pytest.approx(4.0) and rows[0].evaluation_id is None
         revision_id = rows[0].id
     api = client.get("/api/student/submissions").get_json()[0]
     assert set(api).isdisjoint({"private_score", "private_comment", "teacher_score", "deterministic_score", "relative_error", "ai_score", "ai_feedback"})
     teacher = app.test_client(); login(teacher, "admin", "admin123")
+    internal = teacher.get(f"/teacher/submission/{revision_id}").get_data(as_text=True)
+    assert "自动准确度评分" in internal and "100 分" in internal and "数据误差 4.00%" in internal
     teacher.post(f"/teacher/submission/{revision_id}", data={"private_score": 91, "private_comment": "人工审核"})
     with app.app_context():
         review = db_session().scalar(select(Review).where(Review.submission_id == revision_id))
@@ -227,7 +295,7 @@ def test_teacher_score_never_leaks_to_student_report(app, client):
     api = client.get("/api/student/submissions").get_data(as_text=True)
     student_surfaces = page + api + client.get("/student/home").get_data(as_text=True) + client.get("/student/records").get_data(as_text=True) + client.get("/student/achievements").get_data(as_text=True)
     assert "仅教师可见秘密评语" not in student_surfaces and "人工评分" not in student_surfaces
-    assert "已通过" not in student_surfaces and "奖状" not in student_surfaces and ">66<" not in student_surfaces
+    assert ">66<" not in student_surfaces
     assert "预习题成绩" in student_surfaces and "100/100" in student_surfaces
     internal = teacher.get(f"/teacher/submission/{revision.id}").get_data(as_text=True)
     assert "仅教师可见秘密评语" in internal
@@ -436,7 +504,7 @@ def test_platform_ui_uses_one_typography_icon_and_page_scale_standard():
     templates = "\n".join(path.read_text(encoding="utf-8") for path in (root / "templates").glob("*.html"))
     for token in ("--ui-font-body", "--ui-font-display", "--ui-title-page", "--ui-text-body", "--ui-icon-control", "--ui-content-wide"):
         assert token in css
-    assert "1328 px" in guide and "44 px" in guide and "16 × 16 px" in guide
+    assert "1328 px" in guide and "42 px" in guide and "16 × 16 px" in guide
     assert "font-size:" not in templates and "font-family:" not in templates
     assert "20260806-ui-standard-v1" in (root / "templates" / "base.html").read_text(encoding="utf-8")
 
@@ -513,21 +581,20 @@ def test_teacher_can_delete_draft_only_experiment_and_safely_archive_published_o
         assert versions and all(version.status != "published" for version in versions)
 
 
-def test_student_operation_tab_is_detailed_text_not_fake_progress(client):
+def test_student_challenge_is_page_based_and_keeps_full_operation_text(client):
     login(client)
     page = client.get("/student/experiment/ION").get_data(as_text=True)
-    assert "实验操作步骤" in page and "operation-procedure" in page
-    assert "当前步骤" not in page and "待开始" not in page
+    assert "实验闯关" in page and "challenge-workspace" in page and "challenge-step" in page
+    assert "operation-procedure" not in page and 'data-tab-target="fit"' not in page
+    assert "当前关卡" in page and "保存并进入下一关" in page
 
 
-def test_fitting_table_has_no_row_action_column_and_uses_add_row_label(client):
+def test_fitting_is_an_independent_small_level_with_synced_data_contract(client):
     login(client)
     page = client.get("/student/experiment/QKD").get_data(as_text=True)
-    table = page.split('<table class="fit-table">', 1)[1].split("</table>", 1)[0]
-    assert "添加行" in page and "添加测量点" not in page
-    assert "row-remove" not in table and "删除此行" not in table
-    header = table.split("</thead>", 1)[0]
-    assert header.count("<th>") == 3
+    assert 'data-step-kind="fit"' in page and "已同步的原始数据" in page
+    assert "使用 Excel 结果继续" in page and "添加测量点" not in page
+    assert 'data-fit-save-url=' in page and 'data-fit-fallback-url=' in page
 
 
 def test_student_home_uses_100_point_quiz_score_and_completed_experiment_count(app, client):
@@ -541,19 +608,25 @@ def test_student_home_uses_100_point_quiz_score_and_completed_experiment_count(a
     assert "已完成实验" in after_submission and "1 / 5" in after_submission
 
 
+def test_student_home_shows_memorial_directly_and_makes_each_level_selectable(client):
+    page = login(client).get_data(as_text=True)
+    assert "我的通关纪念" in page and "实验探索纪念证书" in page
+    assert page.count("选择本关并开始") == 5
+
+
 def test_learning_memorial_unlocks_from_submission_only_and_relocks_after_withdrawal(app, client):
     login(client)
     initial = client.get("/student/achievements").get_data(as_text=True)
-    assert "荣誉展厅" in initial and initial.count("data-achievement-item") == 5
+    assert "我的通关纪念" in initial and initial.count("data-achievement-item") == 5
     assert initial.count('data-unlocked="false"') == 5
-    assert "正式提交实验报告后解锁荣誉证书" in initial and "通过后解锁" not in initial
+    assert "正式提交实验报告后解锁对应证书" in initial and "通过后解锁" not in initial
 
     _answer_quiz(app, client)
     _submit(client)
     unlocked = client.get("/student/achievements").get_data(as_text=True)
     ion = unlocked.split('data-code="ION"', 1)[1].split("</button>", 1)[0]
     assert 'data-unlocked="true"' in ion and 'data-revision="1"' in ion
-    assert "实验通关纪念证书" in unlocked and "完成全部实验流程并正式提交报告" in unlocked
+    assert "实验探索纪念证书" in unlocked and "完成全部实验流程并正式提交报告" in unlocked
 
     with app.app_context():
         revision = db_session().scalar(select(SubmissionRevision).where(SubmissionRevision.status == "submitted"))
