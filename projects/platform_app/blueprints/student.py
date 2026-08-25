@@ -390,6 +390,16 @@ def experiment(code):
     steps_by_id = {step["id"]: step for step in steps}
     progress_data = dict(progress.step_data or {})
     for step in steps:
+        stored_data = (progress_data.get(str(step["index"]), {}) or {}).get("data", {})
+        dynamic_by_field = stored_data.get("__table_columns__", {}) if isinstance(stored_data, dict) else {}
+        for field in step.get("fields", []):
+            if field.get("type") != "table":
+                continue
+            configured = field.get("columns") or []
+            configured_keys = {column.get("key") for column in configured}
+            dynamic = [column for column in (dynamic_by_field.get(field.get("key"), []) if isinstance(dynamic_by_field, dict) else []) if column.get("key") not in configured_keys]
+            field["columns"] = configured + dynamic
+    for step in steps:
         if step.get("kind") != "fit":
             continue
         config = step.get("fit_config") or {}

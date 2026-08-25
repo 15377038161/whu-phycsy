@@ -131,14 +131,24 @@ def clean_step_data(step: dict, value) -> dict:
             allowed = set(field.get("options") or [])
             cleaned[key] = [str(item)[:200] for item in (raw if isinstance(raw, list) else []) if str(item) in allowed]
         elif kind == "table":
+            configured_columns = field.get("columns", [])
+            configured_keys = {column["key"] for column in configured_columns}
+            dynamic_columns = []
+            raw_columns = (source.get("__table_columns__") or {}).get(key, []) if isinstance(source.get("__table_columns__"), dict) else []
+            for column in _clean_columns(raw_columns):
+                if column["key"].startswith("extra_") and column["key"] not in configured_keys and column["key"] not in {item["key"] for item in dynamic_columns}:
+                    dynamic_columns.append(column)
+            all_columns = configured_columns + dynamic_columns
             rows = []
             for raw_row in raw if isinstance(raw, list) else []:
                 if not isinstance(raw_row, dict):
                     continue
-                row = {column["key"]: str(raw_row.get(column["key"], ""))[:1000] for column in field.get("columns", [])}
+                row = {column["key"]: str(raw_row.get(column["key"], ""))[:1000] for column in all_columns}
                 if any(item.strip() for item in row.values()):
                     rows.append(row)
             cleaned[key] = rows[:60]
+            if dynamic_columns:
+                cleaned.setdefault("__table_columns__", {})[key] = dynamic_columns
         elif kind == "single_choice":
             value = str(raw or "")[:200]
             cleaned[key] = value if value in set(field.get("options") or []) else ""
@@ -218,7 +228,9 @@ def update_report_from_step(draft: ReportDraft, step: dict, step_no: int, data: 
     for field in step.get("fields", []):
         key, kind = field["key"], field["type"]
         if kind == "table" and data.get(key):
-            columns = field.get("columns") or []
+            dynamic = (data.get("__table_columns__") or {}).get(key, []) if isinstance(data.get("__table_columns__"), dict) else []
+            configured_keys = {item.get("key") for item in field.get("columns") or []}
+            columns = list(field.get("columns") or []) + [column for column in dynamic if column.get("key") not in configured_keys]
             rows = [[f"{column['label']}{'（' + column['unit'] + '）' if column.get('unit') else ''}" for column in columns]]
             rows.extend([[str(row.get(column["key"], "")) for column in columns] for row in data[key]])
             generated.append({"type": "table", "rows": rows, "caption": f"{caption_prefix}{field['label']}"})

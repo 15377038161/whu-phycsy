@@ -587,10 +587,12 @@ def test_student_challenge_is_page_based_and_keeps_full_operation_text(client):
     assert "实验闯关" in page and "challenge-workspace" in page and "challenge-step" in page
     assert "operation-procedure" not in page and 'data-tab-target="fit"' not in page
     assert "当前关卡" in page and "保存并进入下一关" in page
+    assert "添加一列" in page and "data-add-step-column" in page and "data-table-column-def" in page
     assert 'class="site-footer"' in page
     css = (Path(__file__).parents[1] / "static" / "quantum-platform.css").read_text(encoding="utf-8")
     assert ".challenge-actions{width:100%;padding:18px 0 0" in css
     assert ".challenge-actions{grid-template-columns:minmax(0,1fr) minmax(0,1fr)" in css
+    assert ".challenge-table-actions" in css and "font-variant-numeric:lining-nums tabular-nums" in css
 
 
 def test_fitting_is_an_independent_small_level_with_synced_data_contract(client):
