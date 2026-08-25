@@ -87,6 +87,10 @@ logs/
 *.xlsx
 *.csv
 
+# Versioned teaching materials required by the Coze preview and delivery build.
+!projects/static/materials/
+!projects/static/materials/*.pdf
+
 # Preview files
 .preview
 

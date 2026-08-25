@@ -12,7 +12,7 @@ def test_delivery_package_is_clean():
     assert package.exists(), result.stdout
     with zipfile.ZipFile(package) as archive:
         names = set(archive.namelist())
-        assert {"Dockerfile", "docker-compose.yml", ".env.example", "platform_app/models.py", "static/fonts/simhei.ttf", "static/quantum-platform.css", "static/platform.js"} <= names
+        assert {"Dockerfile", "docker-compose.yml", ".env.example", "platform_app/models.py", "static/fonts/simhei.ttf", "static/quantum-platform.css", "static/platform.js", "static/materials/ion-trap-202510.pdf", "static/materials/qkd-material.pdf", "static/materials/entanglement-20250429.pdf", "static/materials/nv-2024-08-30.pdf", "static/materials/single-pixel-material.pdf"} <= names
         forbidden = (".git", ".env.local", "data.json", "实例实验报告", "COZE", ".coze", "supabase_client", "__pycache__")
         assert not any(any(item.lower() in name.lower() for item in forbidden) for name in names)
 
