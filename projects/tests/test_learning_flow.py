@@ -622,6 +622,16 @@ def test_student_home_shows_memorial_directly_and_makes_each_level_selectable(cl
     assert "这里仅展示你已选择的 3 个实验" in page
 
 
+def test_selected_experiment_gallery_stays_on_one_scrollable_row():
+    css = (Path(__file__).parents[1] / "static" / "quantum-platform.css").read_text(encoding="utf-8")
+    gallery_section = css.split("/* 首页已选实验始终保持单行展廊", 1)[1]
+    gallery_rule = gallery_section.split(".student-shell .selected-level-grid{", 1)[1].split("}", 1)[0]
+    assert "display:flex" in gallery_rule
+    assert "flex-wrap:nowrap" in gallery_rule
+    assert "overflow-x:auto" in gallery_rule
+    assert "overflow-y:hidden" in gallery_rule
+
+
 def test_learning_memorial_unlocks_from_submission_only_and_relocks_after_withdrawal(app, client):
     login(client)
     initial = client.get("/student/achievements").get_data(as_text=True)

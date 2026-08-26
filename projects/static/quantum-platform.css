@@ -629,3 +629,9 @@ body.is-offline [data-requires-online]{opacity:.5;cursor:not-allowed}.empty-tabl
 /* 数据表支持学生在当前实验记录中追加自定义测量列；标题和数字使用同一套中文字体基线。 */
 .challenge-table-field>header .challenge-table-actions{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:nowrap}.challenge-table-field>header .challenge-table-actions .secondary-button{flex:1 1 0;min-width:0;min-height:38px;padding:8px 12px;font-size:13px;white-space:nowrap}.challenge-table-field th .table-column-name{width:100%;min-width:110px;border:1px solid rgba(17,87,64,.25);border-radius:6px;padding:4px 6px;background:#fff;color:var(--blue);font:inherit;text-align:center}.challenge-step-heading h3{font-family:var(--ui-font-display);font-variant-numeric:lining-nums tabular-nums}
 @media(max-width:620px){.challenge-table-field>header .challenge-table-actions{width:100%;display:flex;flex-direction:row;flex-wrap:nowrap;overflow-x:auto;justify-content:stretch}.challenge-table-field>header .challenge-table-actions .secondary-button{flex:1 1 0}}
+
+/* 首页已选实验始终保持单行展廊；空间不足时只在组件内部横向浏览。 */
+.student-shell .selected-level-grid{display:flex;grid-template-columns:none;gap:24px;overflow-x:auto;overflow-y:hidden;flex-wrap:nowrap;scroll-snap-type:x mandatory;scroll-behavior:smooth;overscroll-behavior-inline:contain;padding-bottom:18px}
+.student-shell .selected-level-grid .selected-level-card{flex:0 0 clamp(360px,31vw,490px);min-width:0;scroll-snap-align:start;scroll-snap-stop:always}
+@media(max-width:900px){.student-shell .selected-level-grid .selected-level-card{flex-basis:clamp(340px,72vw,430px)}}
+@media(max-width:680px){.student-shell .selected-level-grid{gap:16px}.student-shell .selected-level-grid .selected-level-card{flex-basis:min(84vw,330px)}}
