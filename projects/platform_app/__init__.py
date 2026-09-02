@@ -8,47 +8,10 @@ from threading import Lock
 from urllib.parse import urlsplit
 
 from dotenv import load_dotenv
-from flask import Flask, abort, current_app, has_request_context, request, session
-from flask.sessions import SecureCookieSessionInterface
+from flask import Flask, abort, request, session
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 from .db import init_database
-
-
-def _on_coze_platform() -> bool:
-    """True when running inside the Coze platform.
-
-    Detection is layered: (1) platform-injected env vars (production or devbox
-    preview; the user-facing connection is always HTTPS there), (2) the FaaS
-    deployment path /opt/bytefaas/. Either signal is sufficient.
-    """
-    if os.getenv("PGDATABASE_URL") or os.getenv("COZE_SUPABASE_URL"):
-        return True
-    if os.getenv("COZE_PROJECT_DOMAIN_DEFAULT") or os.getenv("COZE_DEVBOX_ENV"):
-        return True
-    return "/opt/bytefaas/" in str(Path(__file__).resolve())
-
-
-class _PreviewSessionInterface(SecureCookieSessionInterface):
-    """Session cookie that survives cross-origin preview iframes.
-
-    The Coze platform preview is a cross-origin iframe; SameSite=Lax silently
-    drops the session cookie on iframe subrequests, breaking CSRF and auth.
-    We emit SameSite=None; Secure whenever the request is HTTPS (detected via
-    X-Forwarded-Proto) OR platform env vars are present (the user-facing
-    connection is always HTTPS even if the internal hop is HTTP). Over plain
-    HTTP local dev we keep the safer Lax default.
-    """
-
-    def get_cookie_secure(self, app):
-        if (has_request_context() and request.is_secure) or _on_coze_platform():
-            return True
-        return app.config.get("SESSION_COOKIE_SECURE", False)
-
-    def get_cookie_samesite(self, app):
-        if (has_request_context() and request.is_secure) or _on_coze_platform():
-            return "None"
-        return app.config.get("SESSION_COOKIE_SAMESITE", "Lax")
 
 
 def create_app(test_config: dict | None = None) -> Flask:
@@ -56,9 +19,6 @@ def create_app(test_config: dict | None = None) -> Flask:
     load_dotenv(root / ".env.local", override=False)
     app = Flask(__name__, template_folder=str(root / "templates"), static_folder=str(root / "static"))
     env = os.getenv("APP_ENV", "development")
-    _data_dir = os.getenv("DATA_DIR") or (
-        "/tmp/whu-quantum-lab" if _on_coze_platform() else str(root / "runtime")
-    )
     app.config.update(
         SECRET_KEY=os.getenv("FLASK_SECRET_KEY", "local-development-secret-change-me"),
         APP_ENV=env,
@@ -67,28 +27,16 @@ def create_app(test_config: dict | None = None) -> Flask:
         SESSION_COOKIE_SAMESITE="Lax",
         SESSION_COOKIE_SECURE=env == "production",
         MAX_CONTENT_LENGTH=max(20, int(os.getenv("MAX_UPLOAD_MB", "500"))) * 1024 * 1024,
-        DATA_DIR=_data_dir,
-        DATABASE_URL=os.getenv("DATABASE_URL") or os.getenv("PGDATABASE_URL") or f"sqlite:///{Path(_data_dir) / 'platform.db'}",
+        DATA_DIR=os.getenv("DATA_DIR", str(root / "runtime")),
+        DATABASE_URL=os.getenv("DATABASE_URL", f"sqlite:///{root / 'runtime' / 'platform.db'}"),
         PYODIDE_BASE_URL=os.getenv("PYODIDE_BASE_URL", "https://cdn.jsdelivr.net/pyodide/v0.27.7/full/"),
     )
     if test_config:
         app.config.update(test_config)
     if app.config["APP_ENV"] == "production" and not app.config["DATABASE_URL"].startswith(("postgresql://", "postgresql+psycopg://")):
         raise RuntimeError("Production requires PostgreSQL DATABASE_URL")
-    try:
-        Path(app.config["DATA_DIR"]).mkdir(parents=True, exist_ok=True)
-    except OSError:
-        app.config["DATA_DIR"] = "/tmp/whu-quantum-lab"
-        app.config["DATABASE_URL"] = (
-            os.getenv("DATABASE_URL") or os.getenv("PGDATABASE_URL")
-            or f"sqlite:///{Path(app.config['DATA_DIR']) / 'platform.db'}"
-        )
-        Path(app.config["DATA_DIR"]).mkdir(parents=True, exist_ok=True)
-    _url = app.config["DATABASE_URL"]
-    if _url.startswith("postgresql://"):
-        app.config["DATABASE_URL"] = "postgresql+psycopg://" + _url[len("postgresql://"):]
+    Path(app.config["DATA_DIR"]).mkdir(parents=True, exist_ok=True)
     app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1, x_prefix=1)
-    app.session_interface = _PreviewSessionInterface()
     init_database(app)
     app.extensions["login_attempts"] = {}
     app.extensions["login_attempts_lock"] = Lock()
@@ -123,12 +71,6 @@ def create_app(test_config: dict | None = None) -> Flask:
         expected = session.get("_csrf_token")
         supplied = request.form.get("csrf_token") or request.headers.get("X-CSRFToken")
         if not expected or not supplied or not compare_digest(str(expected), str(supplied)):
-            current_app.logger.warning(
-                "CSRF rejected %s %s secure=%s proto=%s cookie=%s token=%s",
-                request.method, request.path, request.is_secure,
-                request.headers.get("X-Forwarded-Proto"),
-                bool(request.cookies.get("session")), bool(supplied),
-            )
             abort(400, description="CSRF token missing or invalid")
         return None
 
@@ -137,12 +79,7 @@ def create_app(test_config: dict | None = None) -> Flask:
         pyodide_url = urlsplit(app.config["PYODIDE_BASE_URL"])
         pyodide_origin = f"{pyodide_url.scheme}://{pyodide_url.netloc}" if pyodide_url.scheme in {"http", "https"} and pyodide_url.netloc else ""
         external = f" {pyodide_origin}" if pyodide_origin else ""
-        is_prod = app.config["APP_ENV"] == "production"
-        frame_ancestors = "'none'" if is_prod else "*"
-        if is_prod:
-            response.headers["X-Frame-Options"] = "DENY"
-        else:
-            response.headers.pop("X-Frame-Options", None)
+        response.headers["X-Frame-Options"] = "DENY"
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Content-Security-Policy"] = (
             "default-src 'self'; "
@@ -153,9 +90,9 @@ def create_app(test_config: dict | None = None) -> Flask:
             "media-src 'self' blob:; "
             f"connect-src 'self'{external}; "
             f"worker-src 'self' blob:{external}; "
-            f"frame-ancestors {frame_ancestors}; base-uri 'self'; form-action 'self'"
+            "frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
         )
-        if is_prod:
+        if app.config["APP_ENV"] == "production":
             response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
         return response
 

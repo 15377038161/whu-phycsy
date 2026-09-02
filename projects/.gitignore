@@ -26,4 +26,5 @@ uploads/*
 runtime/
 tmp/
 实例实验报告/
-.preview
+node_modules/
+.workbuddy/

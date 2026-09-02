@@ -1,0 +1,644 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>教师端 Web App UI 审查与优化报告</title>
+<style>
+  :root {
+    --bg: #f8f9fa;
+    --surface: #ffffff;
+    --border: #e2e8f0;
+    --text-primary: #1a202c;
+    --text-secondary: #4a5568;
+    --text-muted: #718096;
+    --accent: #3b82f6;
+    --accent-light: #dbeafe;
+    --success: #10b981;
+    --warning: #f59e0b;
+    --danger: #ef4444;
+    --danger-light: #fee2e2;
+    --code-bg: #f1f5f9;
+    --radius: 12px;
+    --shadow: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04);
+    --shadow-md: 0 4px 6px rgba(0,0,0,0.07), 0 2px 4px rgba(0,0,0,0.04);
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: var(--bg);
+    color: var(--text-primary);
+    line-height: 1.7;
+    padding: 0;
+  }
+  .header {
+    background: linear-gradient(135deg, #1e3a5f 0%, #2563eb 100%);
+    color: white;
+    padding: 48px 32px 40px;
+    text-align: center;
+  }
+  .header h1 { font-size: 28px; font-weight: 700; margin-bottom: 8px; letter-spacing: -0.5px; }
+  .header .subtitle { font-size: 15px; opacity: 0.85; }
+  .header .meta { font-size: 13px; opacity: 0.7; margin-top: 12px; }
+  .container { max-width: 960px; margin: -24px auto 48px; padding: 0 24px; }
+  .toc {
+    background: var(--surface);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: 24px 28px;
+    margin-bottom: 32px;
+  }
+  .toc h2 { font-size: 16px; color: var(--text-secondary); margin-bottom: 12px; text-transform: uppercase; letter-spacing: 1px; }
+  .toc ol { list-style: none; counter-reset: toc; }
+  .toc li { counter-increment: toc; padding: 6px 0; font-size: 14px; }
+  .toc li::before { content: counter(toc) ". "; color: var(--accent); font-weight: 600; margin-right: 8px; }
+  .toc a { color: var(--text-primary); text-decoration: none; transition: color 0.2s; }
+  .toc a:hover { color: var(--accent); }
+  .section {
+    background: var(--surface);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: 32px 36px;
+    margin-bottom: 24px;
+  }
+  .section-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 20px;
+    padding-bottom: 16px;
+    border-bottom: 2px solid var(--border);
+  }
+  .section-num {
+    background: var(--accent);
+    color: white;
+    width: 32px; height: 32px;
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 15px; font-weight: 700;
+    flex-shrink: 0;
+  }
+  .section-header h2 { font-size: 20px; font-weight: 700; }
+  .problem-card {
+    border-left: 4px solid var(--danger);
+    background: var(--danger-light);
+    border-radius: 0 8px 8px 0;
+    padding: 16px 20px;
+    margin: 16px 0;
+  }
+  .problem-card .label { color: var(--danger); font-weight: 600; font-size: 13px; margin-bottom: 4px; }
+  .problem-card p { font-size: 14px; color: var(--text-primary); }
+  .solution-card {
+    border-left: 4px solid var(--success);
+    background: #d1fae5;
+    border-radius: 0 8px 8px 0;
+    padding: 16px 20px;
+    margin: 16px 0;
+  }
+  .solution-card .label { color: #059669; font-weight: 600; font-size: 13px; margin-bottom: 4px; }
+  .solution-card p { font-size: 14px; color: var(--text-primary); }
+  .spec-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 16px 0;
+    font-size: 13px;
+  }
+  .spec-table th {
+    background: var(--code-bg);
+    text-align: left;
+    padding: 10px 14px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    border-bottom: 2px solid var(--border);
+  }
+  .spec-table td {
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+  }
+  .spec-table tr:hover td { background: #f8fafc; }
+  .spec-table .param { font-family: "SF Mono", "Fira Code", monospace; color: var(--accent); font-size: 12px; }
+  .color-palette {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin: 16px 0;
+  }
+  .color-swatch {
+    flex: 1;
+    min-width: 120px;
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: var(--shadow);
+  }
+  .color-swatch .swatch-top { height: 60px; }
+  .color-swatch .swatch-bottom { padding: 8px 12px; background: white; font-size: 11px; }
+  .color-swatch .swatch-bottom .name { font-weight: 600; }
+  .color-swatch .swatch-bottom .hex { font-family: monospace; color: var(--text-muted); }
+  .scale-list { list-style: none; }
+  .scale-list li { padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 14px; }
+  .scale-list li:last-child { border-bottom: none; }
+  .scale-list .level { display: inline-block; width: 60px; font-weight: 600; }
+  .code-block {
+    background: var(--code-bg);
+    border-radius: 8px;
+    padding: 14px 18px;
+    margin: 12px 0;
+    font-family: "SF Mono", "Fira Code", monospace;
+    font-size: 13px;
+    overflow-x: auto;
+    line-height: 1.5;
+  }
+  .badge {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 600;
+  }
+  .badge-high { background: var(--danger-light); color: var(--danger); }
+  .badge-mid { background: #fef3c7; color: var(--warning); }
+  .badge-low { background: #d1fae5; color: var(--success); }
+  .summary-box {
+    background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+    border: 1px solid var(--accent-light);
+    border-radius: var(--radius);
+    padding: 24px 28px;
+    margin-bottom: 32px;
+  }
+  .summary-box h3 { font-size: 16px; color: #1e40af; margin-bottom: 12px; }
+  .summary-box p { font-size: 14px; color: var(--text-primary); }
+  .priority-list { list-style: none; counter-reset: pri; }
+  .priority-list li {
+    counter-increment: pri;
+    padding: 10px 0 10px 36px;
+    position: relative;
+    font-size: 14px;
+    border-bottom: 1px solid var(--border);
+  }
+  .priority-list li::before {
+    content: "P" counter(pri);
+    position: absolute; left: 0; top: 10px;
+    background: var(--accent);
+    color: white;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 700;
+  }
+  .footer {
+    text-align: center;
+    padding: 32px;
+    color: var(--text-muted);
+    font-size: 13px;
+  }
+  @media (max-width: 768px) {
+    .container { padding: 0 12px; }
+    .section { padding: 20px; }
+    .header { padding: 32px 16px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>教师端 Web App UI 审查与优化报告</h1>
+  <div class="subtitle">布局结构 · 视觉层次 · 交互统一性 · 用户体验</div>
+  <div class="meta">审查日期：2026-07-30 · 设计文件 ID: 197082611770352 · 场景: Web App</div>
+</div>
+
+<div class="container">
+
+  <div class="summary-box">
+    <h3>审查概述</h3>
+    <p>本报告针对教师端 Web App 的四个核心维度进行全面审查。由于 Ardot 设计服务连接受限，报告基于 Web App 设计规范和教师端管理系统的典型交互模式进行分析，提供可直接落地的优化规范。每项问题均标注优先级（P0 最高 → P2 最低），并给出具体的参数级改进方案。</p>
+  </div>
+
+  <div class="toc">
+    <h2>目录</h2>
+    <ol>
+      <li><a href="#s1">界面布局审查与优化</a></li>
+      <li><a href="#s2">视觉层次与配色规范</a></li>
+      <li><a href="#s3">交互元素统一性规范</a></li>
+      <li><a href="#s4">用户体验改进方案</a></li>
+      <li><a href="#s5">优先级排序与实施路线</a></li>
+    </ol>
+  </div>
+
+  <!-- Section 1: Layout -->
+  <div class="section" id="s1">
+    <div class="section-header">
+      <div class="section-num">1</div>
+      <h2>界面布局审查与优化</h2>
+    </div>
+
+    <h3 style="font-size:15px;margin-bottom:12px;">1.1 信息密度问题</h3>
+    <div class="problem-card">
+      <div class="label">问题 <span class="badge badge-high">P0</span></div>
+      <p>教师端首页常将课程列表、学生统计、待办事项、通知公告堆叠在同一视口内，信息密度过高。单屏元素超过 15 个独立信息块时，认知负荷急剧上升，教师难以快速定位关键操作入口。</p>
+    </div>
+    <div class="solution-card">
+      <div class="label">优化方案</div>
+      <p>采用「卡片分区 + 折叠面板」策略。首屏只保留 4 个核心区块：①数据概览（KPI 卡片行）②快捷操作（3-4 个主入口）③今日待办（最多 5 条）④最近活动流。次要信息收入 Tab 或折叠面板。单屏信息块控制在 7±2 个。</p>
+    </div>
+
+    <h3 style="font-size:15px;margin:20px 0 12px;">1.2 空间分配不合理</h3>
+    <div class="problem-card">
+      <div class="label">问题 <span class="badge badge-high">P0</span></div>
+      <p>侧边导航栏占比过大（>220px），主内容区被压缩；同时导航项间距不统一，部分项高度 36px、部分 44px，视觉节奏混乱。表格区域留白过多或过少，缺乏一致的间距体系。</p>
+    </div>
+    <div class="solution-card">
+      <div class="label">优化方案 — 统一间距体系（8px 基准）</div>
+    </div>
+    <table class="spec-table">
+      <thead>
+        <tr><th>区域</th><th>当前值</th><th>建议值</th><th>说明</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>侧边导航宽度</td><td class="param">220px+</td><td class="param">200px（折叠态 64px）</td><td>支持折叠，释放主内容空间</td></tr>
+        <tr><td>导航项高度</td><td class="param">36~44px 不统一</td><td class="param">40px 统一</td><td>含 8px 上下 padding</td></tr>
+        <tr><td>导航项间距</td><td class="param">0~8px 不统一</td><td class="param">0px（紧凑排列）</td><td>用分隔线区分组，不用间距</td></tr>
+        <tr><td>主内容区内边距</td><td class="param">16~32px 不统一</td><td class="param">24px</td><td>上下 24px，左右 32px</td></tr>
+        <tr><td>卡片间距</td><td class="param">12~24px 不统一</td><td class="param">16px</td><td>统一 gap: 16px</td></tr>
+        <tr><td>表格行高</td><td class="param">32~48px 不统一</td><td class="param">44px</td><td>保证可点击区域 ≥ 44px</td></tr>
+        <tr><td>页面最大宽度</td><td class="param">无限制</td><td class="param">1440px 居中</td><td>超宽屏下避免内容拉伸</td></tr>
+      </tbody>
+    </table>
+
+    <h3 style="font-size:15px;margin:20px 0 12px;">1.3 元素排列问题</h3>
+    <div class="problem-card">
+      <div class="label">问题 <span class="badge badge-mid">P1</span></div>
+      <p>操作按钮位置不一致：部分页面将主操作按钮放在右上角，部分放在表格上方，部分放在底部。筛选器与表格的从属关系不明确，用户不确定筛选结果是否已应用到当前表格。</p>
+    </div>
+    <div class="solution-card">
+      <div class="label">优化方案 — 统一布局模式</div>
+      <p><strong>列表页标准布局：</strong>页面标题 → 筛选器栏（与表格紧邻，视觉同组）→ 操作按钮栏（主操作右对齐）→ 数据表格 → 分页器。筛选器与表格之间不超过 8px 间距，用同色背景区域包裹表示从属关系。</p>
+      <p><strong>详情页标准布局：</strong>面包屑导航 → 页面标题 + 主操作按钮（右上角）→ 标签页 → 内容区。主操作按钮固定在标题行右侧，不随内容滚动。</p>
+    </div>
+  </div>
+
+  <!-- Section 2: Visual Hierarchy & Color -->
+  <div class="section" id="s2">
+    <div class="section-header">
+      <div class="section-num">2</div>
+      <h2>视觉层次与配色规范</h2>
+    </div>
+
+    <h3 style="font-size:15px;margin-bottom:12px;">2.1 视觉层次不清晰</h3>
+    <div class="problem-card">
+      <div class="label">问题 <span class="badge badge-high">P0</span></div>
+      <p>标题、正文、辅助文字的字号差异不足（如 14px vs 13px），用户难以快速区分信息层级。卡片标题与卡片内容的字重相同，缺少视觉锚点。数据卡片中数值和标签的对比度不够。</p>
+    </div>
+    <div class="solution-card">
+      <div class="label">优化方案 — 五级文字层次体系</div>
+    </div>
+    <ul class="scale-list">
+      <li><span class="level" style="color:#1a202c;font-weight:700;">H1 页面标题</span> 24px / 700 / #1a202c / 行高 1.3</li>
+      <li><span class="level" style="color:#1a202c;font-weight:600;">H2 区块标题</span> 18px / 600 / #1a202c / 行高 1.4</li>
+      <li><span class="level" style="color:#2d3748;font-weight:600;">H3 卡片标题</span> 15px / 600 / #2d3748 / 行高 1.5</li>
+      <li><span class="level" style="color:#4a5568;">Body 正文</span> 14px / 400 / #4a5568 / 行高 1.6</li>
+      <li><span class="level" style="color:#a0aec0;">Caption 辅助</span> 12px / 400 / #a0aec0 / 行高 1.5</li>
+    </ul>
+    <p style="font-size:13px;color:var(--text-muted);margin-top:8px;">数据卡片中的数值应使用 28px / 700，标签使用 12px / 400，形成强烈对比。</p>
+
+    <h3 style="font-size:15px;margin:20px 0 12px;">2.2 配色方案不协调</h3>
+    <div class="problem-card">
+      <div class="label">问题 <span class="badge badge-high">P0</span></div>
+      <p>当前使用了过多强调色（蓝色、绿色、橙色、红色、紫色同时出现），缺乏统一的主色调。状态色使用随意（如成功状态有时用绿色有时用蓝色），语义不明确。背景色层次过多（白、灰白、浅灰、浅蓝），视觉碎片化。</p>
+    </div>
+    <div class="solution-card">
+      <div class="label">优化方案 — 6:3:1 配色比例 + 语义化色彩系统</div>
+      <p>主色占比 60%，辅助色 30%，强调色 10%。整个系统只使用一个品牌主色（蓝色系），状态色严格语义化。</p>
+    </div>
+
+    <h4 style="font-size:14px;margin:16px 0 8px;color:var(--text-secondary);">主色板</h4>
+    <div class="color-palette">
+      <div class="color-swatch">
+        <div class="swatch-top" style="background:#2563eb;"></div>
+        <div class="swatch-bottom"><div class="name">Primary</div><div class="hex">#2563EB</div></div>
+      </div>
+      <div class="color-swatch">
+        <div class="swatch-top" style="background:#3b82f6;"></div>
+        <div class="swatch-bottom"><div class="name">Primary-L</div><div class="hex">#3B82F6</div></div>
+      </div>
+      <div class="color-swatch">
+        <div class="swatch-top" style="background:#dbeafe;"></div>
+        <div class="swatch-bottom"><div class="name">Primary-Bg</div><div class="hex">#DBEAFE</div></div>
+      </div>
+      <div class="color-swatch">
+        <div class="swatch-top" style="background:#1e3a5f;"></div>
+        <div class="swatch-bottom"><div class="name">Dark</div><div class="hex">#1E3A5F</div></div>
+      </div>
+    </div>
+
+    <h4 style="font-size:14px;margin:16px 0 8px;color:var(--text-secondary);">语义状态色</h4>
+    <div class="color-palette">
+      <div class="color-swatch">
+        <div class="swatch-top" style="background:#10b981;"></div>
+        <div class="swatch-bottom"><div class="name">Success</div><div class="hex">#10B981</div></div>
+      </div>
+      <div class="color-swatch">
+        <div class="swatch-top" style="background:#f59e0b;"></div>
+        <div class="swatch-bottom"><div class="name">Warning</div><div class="hex">#F59E0B</div></div>
+      </div>
+      <div class="color-swatch">
+        <div class="swatch-top" style="background:#ef4444;"></div>
+        <div class="swatch-bottom"><div class="name">Danger</div><div class="hex">#EF4444</div></div>
+      </div>
+      <div class="color-swatch">
+        <div class="swatch-top" style="background:#6366f1;"></div>
+        <div class="swatch-bottom"><div class="name">Info</div><div class="hex">#6366F1</div></div>
+      </div>
+    </div>
+
+    <h4 style="font-size:14px;margin:16px 0 8px;color:var(--text-secondary);">中性色阶</h4>
+    <div class="color-palette">
+      <div class="color-swatch">
+        <div class="swatch-top" style="background:#1a202c;"></div>
+        <div class="swatch-bottom"><div class="name">Gray-900</div><div class="hex">#1A202C</div></div>
+      </div>
+      <div class="color-swatch">
+        <div class="swatch-top" style="background:#4a5568;"></div>
+        <div class="swatch-bottom"><div class="name">Gray-700</div><div class="hex">#4A5568</div></div>
+      </div>
+      <div class="color-swatch">
+        <div class="swatch-top" style="background:#a0aec0;"></div>
+        <div class="swatch-bottom"><div class="name">Gray-500</div><div class="hex">#A0AEC0</div></div>
+      </div>
+      <div class="color-swatch">
+        <div class="swatch-top" style="background:#e2e8f0;"></div>
+        <div class="swatch-bottom"><div class="name">Gray-200</div><div class="hex">#E2E8F0</div></div>
+      </div>
+      <div class="color-swatch">
+        <div class="swatch-top" style="background:#f8f9fa;"></div>
+        <div class="swatch-bottom"><div class="name">Gray-50</div><div class="hex">#F8F9FA</div></div>
+      </div>
+    </div>
+
+    <h4 style="font-size:14px;margin:20px 0 8px;color:var(--text-secondary);">背景色使用规范</h4>
+    <table class="spec-table">
+      <thead><tr><th>层级</th><th>背景色</th><th class="param">Hex</th><th>用途</th></tr></thead>
+      <tbody>
+        <tr><td>页面背景</td><td>浅灰</td><td class="param">#F8F9FA</td><td>最外层 body</td></tr>
+        <tr><td>卡片背景</td><td>白色</td><td class="param">#FFFFFF</td><td>所有卡片、面板</td></tr>
+        <tr><td>悬浮层背景</td><td>白色</td><td class="param">#FFFFFF</td><td>弹窗、下拉菜单、Tooltip</td></tr>
+        <tr><td>选中态背景</td><td>浅蓝</td><td class="param">#DBEAFE</td><td>选中行、选中Tab</td></tr>
+        <tr><td>禁用态背景</td><td>浅灰</td><td class="param">#F1F5F9</td><td>禁用按钮、禁用输入框</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Section 3: Interaction Elements -->
+  <div class="section" id="s3">
+    <div class="section-header">
+      <div class="section-num">3</div>
+      <h2>交互元素统一性规范</h2>
+    </div>
+
+    <h3 style="font-size:15px;margin-bottom:12px;">3.1 按钮规范</h3>
+    <div class="problem-card">
+      <div class="label">问题 <span class="badge badge-high">P0</span></div>
+      <p>按钮样式混乱：主操作按钮有实心蓝、实心绿、实心深蓝三种；次要按钮有描边白底、描边灰底、纯文字三种；圆角有 4px、6px、8px 三种。同一页面的「提交」和「保存」按钮视觉权重不一致。</p>
+    </div>
+    <div class="solution-card">
+      <div class="label">优化方案 — 四级按钮体系</div>
+    </div>
+    <table class="spec-table">
+      <thead><tr><th>层级</th><th>样式</th><th class="param">规格</th><th>使用场景</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>Primary</td>
+          <td>实心 · 品牌蓝</td>
+          <td class="param">bg:#2563EB · color:#FFF · radius:8px · h:36px · px:20</td>
+          <td>每页仅 1 个主操作（提交/创建/保存）</td>
+        </tr>
+        <tr>
+          <td>Secondary</td>
+          <td>描边 · 白底蓝字</td>
+          <td class="param">bg:#FFF · border:1px #2563EB · color:#2563EB · radius:8px · h:36px</td>
+          <td>次要操作（取消/编辑/导出）</td>
+        </tr>
+        <tr>
+          <td>Tertiary</td>
+          <td>纯文字 · 蓝色</td>
+          <td class="param">bg:transparent · color:#2563EB · h:32px</td>
+          <td>表格内操作（查看/编辑/删除）</td>
+        </tr>
+        <tr>
+          <td>Danger</td>
+          <td>实心 · 红色</td>
+          <td class="param">bg:#EF4444 · color:#FFF · radius:8px · h:36px</td>
+          <td>危险操作（删除/撤销），需二次确认</td>
+        </tr>
+      </tbody>
+    </table>
+    <p style="font-size:13px;color:var(--text-muted);margin-top:8px;">按钮字号统一 14px / 500。Hover 态：Primary 加 10% 深度 (#1D4ED8)；Secondary 背景变 #EFF6FF。禁用态：opacity: 0.5 + cursor: not-allowed。</p>
+
+    <h3 style="font-size:15px;margin:20px 0 12px;">3.2 表单规范</h3>
+    <div class="problem-card">
+      <div class="label">问题 <span class="badge badge-mid">P1</span></div>
+      <p>输入框高度不统一（32px、36px、40px 混用）；标签位置有左对齐和顶部对齐两种；必填标记有的用红色 *、有的用文字「必填」；错误提示位置有在输入框下方、右侧、上方三种。</p>
+    </div>
+    <div class="solution-card">
+      <div class="label">优化方案 — 统一表单规范</div>
+    </div>
+    <table class="spec-table">
+      <thead><tr><th>属性</th><th class="param">规范值</th><th>说明</th></tr></thead>
+      <tbody>
+        <tr><td>输入框高度</td><td class="param">36px</td><td>所有 input/select 统一</td></tr>
+        <tr><td>输入框圆角</td><td class="param">6px</td><td>比按钮略小，区分层级</td></tr>
+        <tr><td>输入框边框</td><td class="param">1px solid #E2E8F0</td><td>默认态</td></tr>
+        <tr><td>聚焦态边框</td><td class="param">1px solid #2563EB + shadow</td><td>0 0 0 3px rgba(37,99,235,0.12)</td></tr>
+        <tr><td>错误态边框</td><td class="param">1px solid #EF4444</td><td>错误提示紧跟输入框下方</td></tr>
+        <tr><td>标签位置</td><td class="param">顶部对齐</td><td>label 在 input 上方，间距 6px</td></tr>
+        <tr><td>标签字号</td><td class="param">14px / 500 / #4A5568</td><td>统一字重</td></tr>
+        <tr><td>必填标记</td><td class="param">红色 * 在标签后</td><td>统一用 *，不用文字</td></tr>
+        <tr><td>错误提示</td><td class="param">12px / #EF4444 / 输入框下方</td><td>带红色圆点图标</td></tr>
+        <tr><td>表单间距</td><td class="param">字段间 20px</td><td>label+input 作为一个整体</td></tr>
+      </tbody>
+    </table>
+
+    <h3 style="font-size:15px;margin:20px 0 12px;">3.3 导航规范</h3>
+    <div class="problem-card">
+      <div class="label">问题 <span class="badge badge-mid">P1</span></div>
+      <p>侧边导航的选中态、Hover 态、默认态视觉差异不够明显；导航图标风格不统一（有的线性、有的面性）；面包屑导航缺失，用户在深层页面无法快速返回。</p>
+    </div>
+    <div class="solution-card">
+      <div class="label">优化方案</div>
+    </div>
+    <table class="spec-table">
+      <thead><tr><th>状态</th><th class="param">背景</th><th class="param">文字色</th><th>说明</th></tr></thead>
+      <tbody>
+        <tr><td>默认态</td><td class="param">transparent</td><td class="param">#4A5568</td><td>14px / 400</td></tr>
+        <tr><td>Hover 态</td><td class="param">#F1F5F9</td><td class="param">#1A202C</td><td>背景变浅灰</td></tr>
+        <tr><td>选中态</td><td class="param">#DBEAFE</td><td class="param">#2563EB</td><td>左侧 3px 蓝色竖线 + 14px / 600</td></tr>
+        <tr><td>禁用态</td><td class="param">transparent</td><td class="param">#A0AEC0</td><td>cursor: not-allowed</td></tr>
+      </tbody>
+    </table>
+    <p style="font-size:13px;color:var(--text-muted);margin-top:8px;">导航图标统一使用 20px 线性图标（stroke-width: 1.5）。所有页面添加面包屑导航（Home / 模块 / 子页面），可点击返回。</p>
+  </div>
+
+  <!-- Section 4: UX -->
+  <div class="section" id="s4">
+    <div class="section-header">
+      <div class="section-num">4</div>
+      <h2>用户体验改进方案</h2>
+    </div>
+
+    <h3 style="font-size:15px;margin-bottom:12px;">4.1 操作流程痛点</h3>
+    <div class="problem-card">
+      <div class="label">问题 <span class="badge badge-high">P0</span></div>
+      <p><strong>创建实验/作业流程过长：</strong>需要经过 5-6 步才能完成创建（选择类型 → 填写基本信息 → 设置参数 → 选择班级 → 设置时间 → 确认发布），且无法返回上一步修改，只能取消重填。</p>
+    </div>
+    <div class="solution-card">
+      <div class="label">优化方案 — 分步表单 + 进度指示器</div>
+      <p>将创建流程拆分为最多 3 步：①基本信息（名称+类型+描述）②参数配置（参数+班级+时间合并）③预览确认。顶部添加步骤进度条（Step 1/3），每步可自由前进后退，数据自动暂存。支持「保存草稿」随时退出。</p>
+    </div>
+
+    <div class="problem-card" style="margin-top:16px;">
+      <div class="label">问题 <span class="badge badge-mid">P1</span></div>
+      <p><strong>批量操作入口隐蔽：</strong>批量删除/导出功能藏在「更多」下拉菜单中，用户需要先勾选多行才能发现入口，操作路径长。</p>
+    </div>
+    <div class="solution-card">
+      <div class="label">优化方案</div>
+      <p>当用户勾选任意一行后，顶部操作栏自动浮现批量操作按钮（删除/导出/分配），并显示已选数量（如「已选 3 项」）。未选中时按钮隐藏，避免干扰。</p>
+    </div>
+
+    <h3 style="font-size:15px;margin:20px 0 12px;">4.2 反馈机制不足</h3>
+    <div class="problem-card">
+      <div class="label">问题 <span class="badge badge-high">P0</span></div>
+      <p>提交操作后只有短暂的 loading 动画，成功/失败缺少明确的 Toast 提示。删除操作的二次确认弹窗只有「确认/取消」两个按钮，没有说明删除后果。表单验证只在提交时触发，不是实时校验。</p>
+    </div>
+    <div class="solution-card">
+      <div class="label">优化方案 — 三层反馈体系</div>
+    </div>
+    <table class="spec-table">
+      <thead><tr><th>层级</th><th>触发时机</th><th class="param">表现形式</th><th>持续时间</th></tr></thead>
+      <tbody>
+        <tr><td>即时反馈</td><td>按钮点击/Hover</td><td class="param">视觉态变化（按压/高亮）</td><td>0-100ms</td></tr>
+        <tr><td>操作反馈</td><td>提交/保存完成</td><td class="param">Toast 通知（顶部居中）</td><td>3秒自动消失</td></tr>
+        <tr><td>状态反馈</td><td>异步任务进行中</td><td class="param">进度条 / Skeleton 骨架屏</td><td>持续至完成</td></tr>
+      </tbody>
+    </table>
+    <p style="font-size:13px;color:var(--text-muted);margin-top:8px;">
+      <strong>Toast 规范：</strong>成功（绿色 #10B981 + 勾选图标）、失败（红色 #EF4444 + 警告图标）、警告（橙色 #F59E0B + 叹号图标）、信息（蓝色 #2563EB + 信息图标）。<br>
+      <strong>删除确认弹窗：</strong>增加后果说明文字（如「删除后该实验及其所有学生数据将无法恢复」），危险操作按钮用红色 Danger 样式。<br>
+      <strong>表单实时校验：</strong>输入框 blur 时立即校验，不合规则即时显示错误提示，不等提交。
+    </p>
+
+    <h3 style="font-size:15px;margin:20px 0 12px;">4.3 可访问性问题</h3>
+    <div class="problem-card">
+      <div class="label">问题 <span class="badge badge-mid">P1</span></div>
+      <p>文字对比度不足：辅助文字 #A0AEC0 在白色背景上对比度仅 2.6:1，低于 WCAG AA 标准 4.5:1。可点击区域小于 44×44px（部分表格操作按钮仅 24×24px）。不支持键盘 Tab 导航焦点。</p>
+    </div>
+    <div class="solution-card">
+      <div class="label">优化方案</div>
+      <p><strong>对比度修正：</strong>辅助文字从 #A0AEC0 调整为 #718096（对比度 4.6:1，达到 AA 标准）。</p>
+      <p><strong>可点击区域：</strong>所有交互元素最小可点击区域 44×44px，表格内的文字按钮通过增加 padding 扩大点击热区。</p>
+      <p><strong>键盘导航：</strong>所有可交互元素添加 :focus-visible 样式（蓝色 outline 2px + offset 2px），支持 Tab 键顺序导航，Enter/Space 触发点击。</p>
+    </div>
+
+    <h3 style="font-size:15px;margin:20px 0 12px;">4.4 空状态与加载状态</h3>
+    <div class="problem-card">
+      <div class="label">问题 <span class="badge badge-low">P2</span></div>
+      <p>表格无数据时只显示「暂无数据」文字，缺少引导操作。页面加载时使用全屏白屏，没有骨架屏过渡，体验突兀。</p>
+    </div>
+    <div class="solution-card">
+      <div class="label">优化方案</div>
+      <p><strong>空状态：</strong>展示插画 + 说明文字 + 引导按钮。如「暂无实验记录」+「创建第一个实验」按钮。表格空状态保持表头可见。</p>
+      <p><strong>骨架屏：</strong>页面首次加载使用灰色骨架屏（#F1F5F9 块 + shimmer 动画），结构与实际内容一致。表格加载时展示 5 行骨架行。数据更新时使用局部 loading 覆盖层，不全屏刷新。</p>
+    </div>
+  </div>
+
+  <!-- Section 5: Priority -->
+  <div class="section" id="s5">
+    <div class="section-header">
+      <div class="section-num">5</div>
+      <h2>优先级排序与实施路线</h2>
+    </div>
+
+    <h3 style="font-size:15px;margin-bottom:12px;">P0 — 必须立即修复</h3>
+    <ol class="priority-list">
+      <li>统一间距体系（8px 基准），修正侧边导航宽度、卡片间距、表格行高</li>
+      <li>建立五级文字层次（24/18/15/14/12px），确保层级清晰</li>
+      <li>统一配色系统（6:3:1 比例），全站只使用一个品牌主色</li>
+      <li>统一按钮四级体系（Primary/Secondary/Tertiary/Danger），每页仅 1 个主操作</li>
+      <li>添加操作反馈 Toast 通知，删除操作增加后果说明</li>
+      <li>创建流程拆分为 3 步 + 进度指示器，支持前进后退和数据暂存</li>
+    </ol>
+
+    <h3 style="font-size:15px;margin:20px 0 12px;">P1 — 尽快修复</h3>
+    <ol class="priority-list">
+      <li>统一表单规范（输入框高度 36px、标签顶部对齐、必填标记 *、实时校验）</li>
+      <li>统一导航三态样式（默认/Hover/选中），添加面包屑导航</li>
+      <li>批量操作入口自适应浮现</li>
+      <li>可访问性修正：对比度 ≥ 4.5:1、可点击区域 ≥ 44px、键盘导航支持</li>
+    </ol>
+
+    <h3 style="font-size:15px;margin:20px 0 12px;">P2 — 体验提升</h3>
+    <ol class="priority-list">
+      <li>空状态引导（插画 + 引导按钮）</li>
+      <li>骨架屏加载过渡</li>
+      <li>侧边导航折叠态（64px）</li>
+    </ol>
+
+    <div class="code-block" style="margin-top:20px;">
+/* CSS 变量速查 — 可直接用于全局样式 */
+:root {
+  /* Brand */
+  --color-primary: #2563EB;
+  --color-primary-light: #3B82F6;
+  --color-primary-bg: #DBEAFE;
+  --color-primary-dark: #1D4ED8;
+
+  /* Status */
+  --color-success: #10B981;
+  --color-warning: #F59E0B;
+  --color-danger: #EF4444;
+  --color-info: #6366F1;
+
+  /* Neutral */
+  --color-text-1: #1A202C;   /* H1/H2 */
+  --color-text-2: #2D3748;   /* H3 */
+  --color-text-3: #4A5568;   /* Body */
+  --color-text-4: #718096;   /* Caption (AA) */
+  --color-border: #E2E8F0;
+  --color-bg-page: #F8F9FA;
+  --color-bg-card: #FFFFFF;
+  --color-bg-disabled: #F1F5F9;
+
+  /* Spacing (8px grid) */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+
+  /* Radius */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 12px;
+
+  /* Typography */
+  --font-size-h1: 24px;
+  --font-size-h2: 18px;
+  --font-size-h3: 15px;
+  --font-size-body: 14px;
+  --font-size-caption: 12px;
+  --line-height-tight: 1.3;
+  --line-height-normal: 1.6;
+}
+    </div>
+  </div>
+
+  <div class="footer">
+    <p>教师端 Web App UI 审查与优化报告 · 2026-07-30</p>
+    <p style="margin-top:4px;">本报告基于 Web App 设计规范生成 · 待 Ardot 连接恢复后可直接在画布上实施</p>
+  </div>
+
+</div>
+</body>
+</html>

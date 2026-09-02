@@ -1,10 +1,4 @@
-"""Lazy AI client with two backends. Secrets are read only at call time.
-
-Backend selection is evaluated at call time, never at import:
-- OpenAI-compatible endpoint when AI_BASE_URL / AI_API_KEY / AI_TEXT_MODEL /
-  AI_VISION_MODEL are all configured (teacher self-hosted deployments).
-- Coze platform LLM integration otherwise (out-of-the-box, no keys required).
-"""
+"""Small lazy OpenAI-compatible client. Secrets are read only at call time."""
 from __future__ import annotations
 
 import json
@@ -18,55 +12,18 @@ import time
 import httpx
 
 
-# Model used for the Coze platform integration when no OpenAI endpoint is set.
-COZE_MODEL = os.getenv("AI_COZE_MODEL", "doubao-seed-2-0-lite-260215")
-
 _ready_cache: dict[str, object] = {"key": None, "checked_at": 0.0, "value": False}
-_coze_client = None
-
-
-def _openai_cfg() -> dict[str, str] | None:
-    values = {"base_url": os.getenv("AI_BASE_URL", "").rstrip("/"), "api_key": os.getenv("AI_API_KEY", ""), "text_model": os.getenv("AI_TEXT_MODEL", ""), "vision_model": os.getenv("AI_VISION_MODEL", "")}
-    return values if all(values.values()) else None
 
 
 def _config() -> dict[str, str]:
-    cfg = _openai_cfg()
-    if cfg:
-        return cfg
-    return {"text_model": COZE_MODEL, "vision_model": COZE_MODEL}
+    values = {"base_url": os.getenv("AI_BASE_URL", "").rstrip("/"), "api_key": os.getenv("AI_API_KEY", ""), "text_model": os.getenv("AI_TEXT_MODEL", ""), "vision_model": os.getenv("AI_VISION_MODEL", "")}
+    missing = [key for key, value in values.items() if not value]
+    if missing: raise RuntimeError("AI configuration is incomplete: " + ", ".join(missing))
+    return values
 
 
-def _get_coze_client():
-    global _coze_client
-    if _coze_client is None:
-        from coze_coding_dev_sdk import LLMClient
-        _coze_client = LLMClient()
-    return _coze_client
-
-
-def _to_langchain(messages: list[dict]):
-    from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
-    role_map = {"system": SystemMessage, "user": HumanMessage, "assistant": AIMessage}
-    return [role_map.get(str(item.get("role", "user")), HumanMessage)(content=item.get("content", "")) for item in messages]
-
-
-def _text_of(content) -> str:
-    if isinstance(content, str):
-        return content
-    if isinstance(content, list):
-        parts = []
-        for item in content:
-            if isinstance(item, str):
-                parts.append(item)
-            elif isinstance(item, dict):
-                parts.append(item.get("text", ""))
-        return "".join(parts)
-    return str(content)
-
-
-def _openai_chat(model: str, messages: list[dict], *, temperature=0.0, max_tokens=3000) -> str:
-    cfg = _openai_cfg()
+def _chat(model: str, messages: list[dict], *, temperature=0.0, max_tokens=3000) -> str:
+    cfg = _config()
     response = httpx.post(f"{cfg['base_url']}/chat/completions", headers={"Authorization": f"Bearer {cfg['api_key']}"}, json={"model": model, "messages": messages, "temperature": temperature, "max_tokens": max_tokens}, timeout=httpx.Timeout(connect=15, read=90, write=30, pool=15))
     response.raise_for_status(); choices = response.json().get("choices") or []
     if not choices: raise RuntimeError("AI response did not contain choices")
@@ -75,20 +32,9 @@ def _openai_chat(model: str, messages: list[dict], *, temperature=0.0, max_token
     return str(content)
 
 
-def _coze_chat(model: str, messages: list[dict], *, temperature=0.0, max_tokens=3000) -> str:
-    response = _get_coze_client().invoke(messages=_to_langchain(messages), model=model, temperature=temperature, max_tokens=max_tokens)
-    return _text_of(response.content)
-
-
-def _chat(model: str, messages: list[dict], *, temperature=0.0, max_tokens=3000) -> str:
-    if _openai_cfg():
-        return _openai_chat(model, messages, temperature=temperature, max_tokens=max_tokens)
-    return _coze_chat(model, messages, temperature=temperature, max_tokens=max_tokens)
-
-
-def _openai_chat_stream(model: str, messages: list[dict], *, temperature=0.0, max_tokens=3000):
+def _chat_stream(model: str, messages: list[dict], *, temperature=0.0, max_tokens=3000):
     """Yield text deltas from an OpenAI-compatible chat completion stream."""
-    cfg = _openai_cfg()
+    cfg = _config()
     with httpx.stream(
         "POST",
         f"{cfg['base_url']}/chat/completions",
@@ -118,22 +64,6 @@ def _openai_chat_stream(model: str, messages: list[dict], *, temperature=0.0, ma
                 yield str(content)
 
 
-def _coze_chat_stream(model: str, messages: list[dict], *, temperature=0.0, max_tokens=3000):
-    for chunk in _get_coze_client().stream(messages=_to_langchain(messages), model=model, temperature=temperature, max_tokens=max_tokens):
-        if not chunk.content:
-            continue
-        text = _text_of(chunk.content)
-        if text:
-            yield text
-
-
-def _chat_stream(model: str, messages: list[dict], *, temperature=0.0, max_tokens=3000):
-    if _openai_cfg():
-        yield from _openai_chat_stream(model, messages, temperature=temperature, max_tokens=max_tokens)
-    else:
-        yield from _coze_chat_stream(model, messages, temperature=temperature, max_tokens=max_tokens)
-
-
 def _json(text: str):
     clean = re.sub(r"^```(?:json)?\s*|\s*```$", "", text.strip(), flags=re.I)
     try: return json.loads(clean)
@@ -145,7 +75,7 @@ def _json(text: str):
 
 def ai_ready() -> bool:
     cfg = _config()
-    cache_key = (bool(_openai_cfg()), cfg.get("base_url", ""), cfg["text_model"], cfg["vision_model"])
+    cache_key = (cfg["base_url"], cfg["text_model"], cfg["vision_model"])
     ttl = max(10, int(os.getenv("AI_READY_TTL_SECONDS", "300")))
     now = time.monotonic()
     if _ready_cache["key"] == cache_key and now - float(_ready_cache["checked_at"]) < ttl:

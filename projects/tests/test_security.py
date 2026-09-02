@@ -104,13 +104,9 @@ def test_login_locks_after_five_failures_and_audits(security_app):
 def test_security_headers_and_production_hsts(security_app):
     client = security_app.test_client()
     response = client.get("/login")
-    # Development mode allows the preview platform to embed the app in an iframe.
-    assert "X-Frame-Options" not in response.headers
+    assert response.headers["X-Frame-Options"] == "DENY"
     assert response.headers["X-Content-Type-Options"] == "nosniff"
     assert "default-src 'self'" in response.headers["Content-Security-Policy"]
-    assert "frame-ancestors *" in response.headers["Content-Security-Policy"]
+    assert "frame-ancestors 'none'" in response.headers["Content-Security-Policy"]
     security_app.config["APP_ENV"] = "production"
-    prod_response = client.get("/login")
-    assert prod_response.headers["X-Frame-Options"] == "DENY"
-    assert "frame-ancestors 'none'" in prod_response.headers["Content-Security-Policy"]
-    assert prod_response.headers["Strict-Transport-Security"] == "max-age=31536000; includeSubDomains"
+    assert client.get("/login").headers["Strict-Transport-Security"] == "max-age=31536000; includeSubDomains"

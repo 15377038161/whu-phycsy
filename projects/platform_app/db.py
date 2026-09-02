@@ -3,7 +3,7 @@ from __future__ import annotations
 from contextlib import contextmanager
 
 from flask import current_app
-from sqlalchemy import create_engine, event, text
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import DeclarativeBase, scoped_session, sessionmaker
 
 
@@ -23,13 +23,6 @@ def engine():
             kwargs["connect_args"] = {"check_same_thread": False}
         _engines[url] = create_engine(url, **kwargs)
         _sessions[url] = scoped_session(sessionmaker(bind=_engines[url], expire_on_commit=False))
-        if url.startswith("sqlite"):
-            @event.listens_for(_engines[url], "connect")
-            def _set_sqlite_pragma(dbapi_conn, _record):
-                cursor = dbapi_conn.cursor()
-                cursor.execute("PRAGMA journal_mode=WAL")
-                cursor.execute("PRAGMA busy_timeout=5000")
-                cursor.close()
     return _engines[url]
 
 
