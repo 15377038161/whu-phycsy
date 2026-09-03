@@ -1,0 +1,16 @@
+{
+  "name": "quantum-platform-db-schema",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Isolated Drizzle schema for the built-in Supabase database. Only used to generate migration SQL (drizzle-kit generate). No runtime client.",
+  "scripts": {
+    "generate": "drizzle-kit generate"
+  },
+  "dependencies": {
+    "drizzle-orm": "^0.45.2"
+  },
+  "devDependencies": {
+    "drizzle-kit": "^0.31.10"
+  }
+}

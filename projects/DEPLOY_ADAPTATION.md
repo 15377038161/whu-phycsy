@@ -85,3 +85,48 @@ python3 -m gunicorn --bind 0.0.0.0:"${DEPLOY_RUN_PORT:-5000}" --workers 2 --time
 - `PEP 668 externally-managed-environment`：沙箱需加 `--break-system-packages --user`；生产走 Docker 不受影响。
 - 依赖更新失败：先看 `LOG_LEVEL` 对应的运行日志；`gunicorn` 日志在 stdout。
 - 端口被占：确认 `DEPLOY_RUN_PORT` 对应进程，`ss -lptn 'sport = :<port>'` 定位后按需重启。
+
+## 10. 内置数据库接入（Supabase / Data API）
+
+平台内置数据库为 PolarDB Supabase 多租户形态，**不支持 SQLAlchemy/psycopg 直连**，只通过
+REST/Data API（PostgREST）读写。接入信息由平台注入到沙箱进程环境：
+
+| 变量 | 用途 |
+|------|------|
+| `CODER_SUPABASE_URL` | REST/Data API 基址（如 `https://supabase-api.cxiagents.com`） |
+| `CODER_SUPABASE_ANON_KEY` | 低权限 anon key（公开，安全性依赖 RLS） |
+| `CODER_SUPABASE_TENANT_ID` | 租户路由，必须放入 `X-Instance-ID` 头 |
+
+### 当前完成状态
+
+- **建表迁移已执行**：全部 17 张业务表已在内置库创建（`db-schema/drizzle/0000_sour_bedlam.sql`，
+  由 Drizzle 生成并在执行前移除外键 `"public".` 前缀）。
+- **RLS 审计通过**：系统表审计返回空，`users`、`reviews`、`submission_revisions` 等所有业务表均
+  `ENABLE ROW LEVEL SECURITY`；暂未开放的表默认拒绝（deny-by-default）。
+- **最小 GRANT**：`REVOKE ALL` 后仅 `authenticated` 获得最小读写权限，`anon` 一律不授予业务表
+  （Data API 用真实 anon key 访问 `users`/`experiments` 已实测返回 `42501 permission denied`）。
+- **数据访问脚手架**：新增 `platform_app/supabase_client.py`（httpx + `X-Instance-ID` + JWT 透传，
+  仅用 anon key，禁止 service role），供认证接入后替换 `db.py` 的 SQLAlchemy 直连使用。
+
+### 认证前置要求（未完成，待工具可用）
+
+平台 RLS 行级安全依赖 **Supabase Auth 签发的用户 JWT**（`auth.uid()`）。本仓库当前仍是 Flask 自建
+登录（`users` 表 + Flask `session`），**不产生 Supabase JWT**；故「authenticated 允许场景」的
+Data API 验证与 `services`/`blueprints` 迁移必须等认证接入后才可完成。接入认证需要
+`npx coder-coding-ai supabase auth get-config`（该 CLI 在现沙箱缺失，详见下文「堵点」）。
+
+### 接入路线（认证工具恢复后按序执行）
+
+1. 运行 `npx coder-coding-ai supabase auth get-config`，确认启用的登录方式；
+2. 将 Flask 登录/会话改造为 Supabase Auth，登录后请求携带 `Authorization: Bearer <JWT>`；
+   （OpenSandbox 边界已重命名为 `x-sandbox-authorization`，后端从该头解析）
+3. 用真实用户 JWT 通过 Data API 验证 RLS「允许」与「拒绝」场景；
+4. 将 `services/` 与 `blueprints/` 的 SQLAlchemy 会话替换为 `supabase_client.get_supabase(jwt)`；
+5. 用 Drizzle 为 RLS 设计具体 Policy（现状为默认拒绝），再生成新迁移执行。
+
+### 建表迁移维护
+
+- Schema 定义：`projects/db-schema/src/schema.ts`；配置：`drizzle.config.ts`。
+- 重新生成：`cd projects/db-schema && pnpm drizzle-kit generate`，核对外键前缀后追加 GRANT 再执行。
+- 已执行迁移不可修改；RLS/GRANT 变更必须生成新迁移文件。
+- 该目录仅用于生成建表 SQL，不参与 Flask 运行与交付包。
