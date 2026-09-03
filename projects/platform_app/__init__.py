@@ -12,11 +12,28 @@ from flask import Flask, abort, request, session
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 from .db import init_database
+from .logging_utils import after_request_log, before_request_log, setup_logging, teardown_request_log
+
+
+def _load_env_files() -> str:
+    """Load dotenv files for the current APP_ENV.
+
+    Platform-injected environment variables always take precedence (override=False),
+    so operator/CI values are never shadowed by a checked-in file. Load order:
+    .env <- .env.<APP_ENV> (preview/production) <- .env.local (local overrides).
+    """
+    env = os.getenv("APP_ENV", "development")
+    root = Path(__file__).resolve().parent.parent
+    load_dotenv(root / ".env", override=False)
+    if env and env != "development":
+        load_dotenv(root / f".env.{env}", override=False)
+    load_dotenv(root / ".env.local", override=False)
+    return env
 
 
 def create_app(test_config: dict | None = None) -> Flask:
     root = Path(__file__).resolve().parent.parent
-    load_dotenv(root / ".env.local", override=False)
+    env = _load_env_files()
     app = Flask(__name__, template_folder=str(root / "templates"), static_folder=str(root / "static"))
     env = os.getenv("APP_ENV", "development")
     app.config.update(
@@ -37,6 +54,10 @@ def create_app(test_config: dict | None = None) -> Flask:
         raise RuntimeError("Production requires PostgreSQL DATABASE_URL")
     Path(app.config["DATA_DIR"]).mkdir(parents=True, exist_ok=True)
     app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1, x_prefix=1)
+    setup_logging(app)
+    app.before_request(before_request_log)
+    app.after_request(after_request_log)
+    app.teardown_request(teardown_request_log)
     init_database(app)
     app.extensions["login_attempts"] = {}
     app.extensions["login_attempts_lock"] = Lock()
@@ -94,6 +115,10 @@ def create_app(test_config: dict | None = None) -> Flask:
         )
         if app.config["APP_ENV"] == "production":
             response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["X-Permitted-Cross-Domain-Policies"] = "none"
+        response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+        response.headers.pop("Server", None)
         return response
 
     from auth_service import password_hash

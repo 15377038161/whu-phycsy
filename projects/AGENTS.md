@@ -12,3 +12,11 @@
 8. 不得删除 `source_docs/`、`static/fonts/simhei.ttf` 或报告依赖。
 9. `.env.local`、Key CSV、真实报告、旧数据和上传文件不得进入交付包。
 10. 修改后至少运行 `python scripts/verify_project.py` 和 `pytest -q`。
+
+## 部署适配要点（平台）
+
+- 部署入口为仓库根 `.coder`；对外端口一律读 `DEPLOY_RUN_PORT`，禁止硬编码 5000。
+- 应用按 `APP_ENV` 加载 `.env` / `.env.<APP_ENV>` / `.env.local`，平台注入环境变量优先。
+- 预览用 `APP_ENV=preview` + SQLite；生产必须 `APP_ENV=production` + PostgreSQL `DATABASE_URL`。
+- 新增了 `platform_app/logging_utils.py`（结构化访问日志 + request_id），级别受 `LOG_LEVEL` 控制。
+- 交付/排障见 `DEPLOY_ADAPTATION.md`。

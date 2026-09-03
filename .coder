@@ -1,0 +1,18 @@
+# 武大量子实验平台 - coder 部署适配配置
+# 项目根稳定位于本仓库的 projects/ 子目录（Flask 应用）。
+# 平台通过 DEPLOY_RUN_PORT 指定对外监听端口，脚本一律从环境变量读取，禁止硬编码。
+
+[project]
+requires = ["python-3.11"]
+
+[dev]
+# 依赖已由沙箱预装到 Python user site；此处做幂等兜底安装，失败不阻塞启动。
+build = ["bash", "-c", "cd projects && (python3 -m pip install --user --break-system-packages -q -r requirements.txt 2>/dev/null || true)"]
+run = ["bash", "-c", "cd projects && FLASK_APP=app.py python3 -m flask run --host=0.0.0.0 --port=${DEPLOY_RUN_PORT:-5000}"]
+
+[deploy]
+target = "server"
+build = ["bash", "-c", "cd projects && (python3 -m pip install --user --break-system-packages -q -r requirements.txt 2>/dev/null || true)"]
+# 预览阶段使用 APP_ENV=preview + SQLite 保证可启动；
+# 接入真实 PostgreSQL 后改为 APP_ENV=production 并注入 DATABASE_URL（详见 DEPLOYMENT 补充）。
+run = ["bash", "-c", "cd projects && APP_ENV=preview python3 -m gunicorn --bind 0.0.0.0:${DEPLOY_RUN_PORT:-5000} --workers 2 --timeout 120 app:app"]
