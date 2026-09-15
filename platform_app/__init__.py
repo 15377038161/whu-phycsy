@@ -31,6 +31,34 @@ def _load_env_files() -> str:
     return env
 
 
+class _SandboxProxyPrefixStripper:
+    """Strip the platform sandbox proxy prefix (/sandboxes/<id>/proxy/<port>) from PATH_INFO.
+
+    The platform preview proxy forwards requests without stripping its routing
+    prefix, so Flask sees /sandboxes/.../proxy/5173/login and 404s. This
+    middleware rewrites PATH_INFO to the inner path (and records the prefix in
+    SCRIPT_NAME so url_for/_external URLs keep working behind the proxy).
+    """
+
+    _PREFIX_RE = None  # compiled lazily
+
+    def __init__(self, app):
+        import re
+
+        self.app = app
+        self._prefix_re = re.compile(r"^/sandboxes/[^/]+/proxy/\d+")
+
+    def __call__(self, environ, start_response):
+        path = environ.get("PATH_INFO", "")
+        match = self._prefix_re.match(path)
+        if match:
+            prefix = match.group(0)
+            inner = path[len(prefix):] or "/"
+            environ["SCRIPT_NAME"] = environ.get("SCRIPT_NAME", "") + prefix
+            environ["PATH_INFO"] = inner
+        return self.app(environ, start_response)
+
+
 def create_app(test_config: dict | None = None) -> Flask:
     root = Path(__file__).resolve().parent.parent
     env = _load_env_files()
@@ -54,6 +82,7 @@ def create_app(test_config: dict | None = None) -> Flask:
         raise RuntimeError("Production requires PostgreSQL DATABASE_URL")
     Path(app.config["DATA_DIR"]).mkdir(parents=True, exist_ok=True)
     app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1, x_prefix=1)
+    app.wsgi_app = _SandboxProxyPrefixStripper(app.wsgi_app)
     setup_logging(app)
     app.before_request(before_request_log)
     app.after_request(after_request_log)
