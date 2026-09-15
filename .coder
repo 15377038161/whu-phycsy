@@ -1,0 +1,11 @@
+[project]
+requires = ["python-3.11"]
+
+[dev]
+build = ["sh", "-c", "pip3 install -q --break-system-packages -r requirements.txt"]
+run = ["sh", "-c", "python3 app.py"]
+
+[deploy]
+target = "server"
+build = ["sh", "-c", "pip3 install -q --break-system-packages -r requirements.txt"]
+run = ["sh", "-c", "python3 app.py"]
