@@ -85,10 +85,15 @@ def role_required(role):
 
 @bp.get("/")
 def index():
+    """首页：匿名用户直接渲染登录页（200），已登录用户跳角色首页。
+
+    不用 302 跳 /login 的原因：平台代理会缓存 GET / 的 302 响应（含旧会话
+    票据与内部代理前缀），后续访客会拿到过期缓存导致预览打不开。
+    """
     user = current_user()
     if user:
         return redirect(url_for("teacher.dashboard" if user.role == "teacher" else "student.home"))
-    return redirect(url_for("auth.login"))
+    return render_template("login.html")
 
 
 @bp.route("/login", methods=["GET", "POST"])

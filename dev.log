@@ -810,3 +810,148 @@ Build completed successfully
 2026-09-15 08:20:25,306 [INFO] werkzeug: 172.31.255.2 - - [15/Sep/2026 08:20:25] "[32mGET / HTTP/1.1[0m" 302 -
 2026-09-15 08:20:31,258 [INFO] http.access: request_id=d496ddd6-c96c-44ca-b4a5-f21fecf2b57a method=GET path=/ status=302 duration_ms=1.6
 2026-09-15 08:20:31,262 [INFO] werkzeug: 172.31.255.2 - - [15/Sep/2026 08:20:31] "[32mGET / HTTP/1.1[0m" 302 -
+2026-09-15 08:20:37,295 [INFO] http.access: request_id=fa65973f-fbd6-4dcc-8d83-ad4c4bd923c5 method=GET path=/ status=302 duration_ms=1.7
+2026-09-15 08:20:37,303 [INFO] werkzeug: 172.31.255.2 - - [15/Sep/2026 08:20:37] "[32mGET / HTTP/1.1[0m" 302 -
+2026-09-15 08:20:43,255 [INFO] http.access: request_id=f6d9f9c4-1bb5-4e17-9f6c-a973d526451e method=GET path=/ status=302 duration_ms=0.8
+2026-09-15 08:20:43,258 [INFO] werkzeug: 172.31.255.3 - - [15/Sep/2026 08:20:43] "[32mGET / HTTP/1.1[0m" 302 -
+2026-09-15 08:20:49,247 [INFO] http.access: request_id=ea24b43c-2ec1-4789-a5c4-1cfe860cc435 method=GET path=/ status=302 duration_ms=1.7
+2026-09-15 08:20:49,252 [INFO] werkzeug: 172.31.255.3 - - [15/Sep/2026 08:20:49] "[32mGET / HTTP/1.1[0m" 302 -
+2026-09-15 08:20:55,217 [INFO] http.access: request_id=644561a5-6739-4671-9a20-017f97f0a0ec method=GET path=/ status=302 duration_ms=0.2
+2026-09-15 08:20:55,220 [INFO] werkzeug: 172.31.255.3 - - [15/Sep/2026 08:20:55] "[32mGET / HTTP/1.1[0m" 302 -
+2026-09-15 08:21:01,197 [INFO] http.access: request_id=1fabc1c9-ec9d-4d7e-a3c9-3b08eda2f503 method=GET path=/ status=302 duration_ms=1.8
+2026-09-15 08:21:01,201 [INFO] werkzeug: 172.31.255.2 - - [15/Sep/2026 08:21:01] "[32mGET / HTTP/1.1[0m" 302 -
+2026-09-15 08:21:07,206 [INFO] http.access: request_id=ec2bdada-6113-48c7-9f9a-8a3aa1d1cd92 method=GET path=/ status=302 duration_ms=0.4
+2026-09-15 08:21:07,212 [INFO] werkzeug: 172.31.255.2 - - [15/Sep/2026 08:21:07] "[32mGET / HTTP/1.1[0m" 302 -
+2026-09-15 08:21:13,210 [INFO] http.access: request_id=aa349072-4bb5-4577-add9-067c5863dffb method=GET path=/ status=302 duration_ms=0.7
+2026-09-15 08:21:13,214 [INFO] werkzeug: 172.31.255.3 - - [15/Sep/2026 08:21:13] "[32mGET / HTTP/1.1[0m" 302 -
+2026-09-15 08:21:19,212 [INFO] http.access: request_id=15644884-1acc-47b6-ac6d-67a9d40ea8b4 method=GET path=/ status=302 duration_ms=1.7
+2026-09-15 08:21:19,217 [INFO] werkzeug: 172.31.255.2 - - [15/Sep/2026 08:21:19] "[32mGET / HTTP/1.1[0m" 302 -
+2026-09-15 08:21:25,291 [INFO] http.access: request_id=5ac0a9fb-3f45-4f3a-9a47-29aed46c0647 method=GET path=/ status=302 duration_ms=1.7
+2026-09-15 08:21:25,296 [INFO] werkzeug: 172.31.255.2 - - [15/Sep/2026 08:21:25] "[32mGET / HTTP/1.1[0m" 302 -
+2026-09-15 08:21:31,216 [INFO] http.access: request_id=41b0852c-e97f-44c3-91cf-ade5f98192d3 method=GET path=/ status=302 duration_ms=0.2
+2026-09-15 08:21:31,218 [INFO] werkzeug: 172.31.255.2 - - [15/Sep/2026 08:21:31] "[32mGET / HTTP/1.1[0m" 302 -
+2026-09-15 08:21:37,263 [INFO] http.access: request_id=ff16d340-9549-4087-8486-76ee982e64e0 method=GET path=/ status=302 duration_ms=2.0
+2026-09-15 08:21:37,267 [INFO] werkzeug: 172.31.255.2 - - [15/Sep/2026 08:21:37] "[32mGET / HTTP/1.1[0m" 302 -
+2026-09-15 08:21:43,433 [INFO] http.access: request_id=e5e04064-5ee2-42ba-b5d9-d37806a10d35 method=GET path=/ status=302 duration_ms=0.5
+2026-09-15 08:21:43,442 [INFO] werkzeug: 172.31.255.2 - - [15/Sep/2026 08:21:43] "[32mGET / HTTP/1.1[0m" 302 -
+2026-09-15 08:22:55,297 [INFO] http.access: request_id=6a46546b-d52a-444c-bab1-49ebad438f6f method=GET path=/ status=302 duration_ms=1.8
+2026-09-15 08:22:55,303 [INFO] werkzeug: 172.31.255.2 - - [15/Sep/2026 08:22:55] "[32mGET / HTTP/1.1[0m" 302 -
+2026-09-15 08:32:29,694 [INFO] http.access: request_id=7706af58-ab02-469f-adbe-2634b614940a method=GET path=/ status=302 duration_ms=1.8
+2026-09-15 08:32:29,705 [INFO] werkzeug: 172.31.255.3 - - [15/Sep/2026 08:32:29] "[32mGET / HTTP/1.1[0m" 302 -
+2026-09-15 08:32:33,376 [INFO] http.access: request_id=bc73e9a0-296c-4d80-bd4d-d3b5fddf2eca method=GET path=/ status=302 duration_ms=0.4
+2026-09-15 08:32:33,383 [INFO] werkzeug: 172.31.255.3 - - [15/Sep/2026 08:32:33] "[32mGET / HTTP/1.1[0m" 302 -
+2026-09-15 08:32:33,450 [INFO] http.access: request_id=04835370-1c38-4c89-b4a5-c6ba677c54a2 method=GET path=/login status=200 duration_ms=1.5
+2026-09-15 08:32:33,456 [INFO] werkzeug: 172.31.255.3 - - [15/Sep/2026 08:32:33] "GET /sandboxes/69d6b60c-f365-483d-a10b-7ba3e4d97c75/proxy/5173/login?_sid=HnqSmI1dGWqffTC1ahfgGXQWoQ850jBuP1iqrVyBcOE HTTP/1.1" 200 -
+2026-09-15 08:32:34,216 [INFO] http.access: request_id=30c857c2-4b44-4fe2-823e-e3e47bf4d58f method=GET path=/ status=302 duration_ms=0.4
+2026-09-15 08:32:34,223 [INFO] werkzeug: 172.31.255.2 - - [15/Sep/2026 08:32:34] "[32mGET / HTTP/1.1[0m" 302 -
+2026-09-15 08:32:34,570 [INFO] http.access: request_id=d1dd6a47-fb44-4715-a722-2ec21b6e484b method=GET path=/login status=200 duration_ms=1.4
+2026-09-15 08:32:34,574 [INFO] werkzeug: 172.31.255.3 - - [15/Sep/2026 08:32:34] "GET /sandboxes/69d6b60c-f365-483d-a10b-7ba3e4d97c75/proxy/5173/login?_sid=HnqSmI1dGWqffTC1ahfgGXQWoQ850jBuP1iqrVyBcOE HTTP/1.1" 200 -
+2026-09-15 08:32:34,829 [INFO] http.access: request_id=9e239050-5870-4a63-a176-6fca67135a0a method=GET path=/ status=302 duration_ms=0.4
+2026-09-15 08:32:34,835 [INFO] werkzeug: 172.31.255.2 - - [15/Sep/2026 08:32:34] "[32mGET / HTTP/1.1[0m" 302 -
+2026-09-15 08:32:40,300 [INFO] http.access: request_id=c14596a1-b9ce-4917-8f3e-b4d658dd8bbc method=GET path=/ status=302 duration_ms=0.4
+2026-09-15 08:32:40,306 [INFO] werkzeug: 172.31.255.2 - - [15/Sep/2026 08:32:40] "[32mGET / HTTP/1.1[0m" 302 -
+2026-09-15 08:33:20,711 [INFO] http.access: request_id=ac56c1cf-8318-47fa-8d20-e1d70288c5bb method=GET path=/ status=302 duration_ms=0.4
+2026-09-15 08:33:20,717 [INFO] werkzeug: 172.31.255.3 - - [15/Sep/2026 08:33:20] "[32mGET / HTTP/1.1[0m" 302 -
+2026-09-15 08:33:26,179 [INFO] http.access: request_id=0565907a-b3a4-4368-a8cd-21c26f9e74d9 method=GET path=/ status=302 duration_ms=0.2
+2026-09-15 08:33:26,182 [INFO] werkzeug: 172.31.255.2 - - [15/Sep/2026 08:33:26] "[32mGET / HTTP/1.1[0m" 302 -
+2026-09-15 08:38:28,855 [INFO] http.access: request_id=71b07671-2542-4933-8510-961d3dd7d5ad method=GET path=/ status=302 duration_ms=0.1
+2026-09-15 08:38:28,857 [INFO] werkzeug: 172.31.255.2 - - [15/Sep/2026 08:38:28] "[32mGET / HTTP/1.1[0m" 302 -
+2026-09-15 08:38:34,225 [INFO] http.access: request_id=43f10e6c-b267-471b-bb9d-f99ecc64a65a method=GET path=/ status=302 duration_ms=0.4
+2026-09-15 08:38:34,231 [INFO] werkzeug: 172.31.255.2 - - [15/Sep/2026 08:38:34] "[32mGET / HTTP/1.1[0m" 302 -
+2026-09-15 08:39:06,771 [INFO] http.access: request_id=c7a5f7af-8309-4f6b-8928-cc73caf67f44 method=GET path=/ status=302 duration_ms=0.4
+2026-09-15 08:39:06,778 [INFO] werkzeug: 172.31.255.2 - - [15/Sep/2026 08:39:06] "[32mGET / HTTP/1.1[0m" 302 -
+2026-09-15 08:39:12,024 [INFO] http.access: request_id=bb1439b5-a522-4f57-aee7-35fa9264106a method=GET path=/ status=302 duration_ms=0.2
+2026-09-15 08:39:12,027 [INFO] werkzeug: 172.31.255.3 - - [15/Sep/2026 08:39:12] "[32mGET / HTTP/1.1[0m" 302 -
+2026-09-15 08:39:17,172 [INFO] http.access: request_id=14a4581d-4b31-403b-886c-cf194faaaa19 method=GET path=/ status=302 duration_ms=0.2
+2026-09-15 08:39:17,175 [INFO] werkzeug: 172.31.255.2 - - [15/Sep/2026 08:39:17] "[32mGET / HTTP/1.1[0m" 302 -
+2026-09-15 08:39:22,724 [INFO] http.access: request_id=b319e2b7-27d5-42c8-a305-8fd3843d9a05 method=GET path=/ status=302 duration_ms=0.3
+2026-09-15 08:39:22,728 [INFO] werkzeug: 172.31.255.2 - - [15/Sep/2026 08:39:22] "[32mGET / HTTP/1.1[0m" 302 -
+2026-09-15 08:39:28,063 [INFO] http.access: request_id=e10d9d72-986a-4333-a901-9cb6afa3ab46 method=GET path=/ status=302 duration_ms=0.3
+2026-09-15 08:39:28,068 [INFO] werkzeug: 172.31.255.3 - - [15/Sep/2026 08:39:28] "[32mGET / HTTP/1.1[0m" 302 -
+2026-09-15 08:39:33,264 [INFO] http.access: request_id=9b7f5b78-3456-4465-b784-b4fa9b992319 method=GET path=/ status=302 duration_ms=0.4
+2026-09-15 08:39:33,270 [INFO] werkzeug: 172.31.255.3 - - [15/Sep/2026 08:39:33] "[32mGET / HTTP/1.1[0m" 302 -
+2026-09-15 08:39:38,454 [INFO] http.access: request_id=1d48da92-95b4-4bb5-b69f-29e0a9d84376 method=GET path=/ status=302 duration_ms=0.4
+2026-09-15 08:39:38,470 [INFO] werkzeug: 172.31.255.3 - - [15/Sep/2026 08:39:38] "[32mGET / HTTP/1.1[0m" 302 -
+2026-09-15 08:39:44,319 [INFO] http.access: request_id=d0834e2d-78f8-4f0e-bf95-3fd0bda0d2aa method=GET path=/ status=302 duration_ms=0.4
+2026-09-15 08:39:44,325 [INFO] werkzeug: 172.31.255.3 - - [15/Sep/2026 08:39:44] "[32mGET / HTTP/1.1[0m" 302 -
+2026-09-15 08:39:50,199 [INFO] http.access: request_id=2e1b4f40-f735-453a-a412-c21382d5d362 method=GET path=/ status=302 duration_ms=0.4
+2026-09-15 08:39:50,204 [INFO] werkzeug: 172.31.255.2 - - [15/Sep/2026 08:39:50] "[32mGET / HTTP/1.1[0m" 302 -
+2026-09-15 08:39:56,208 [INFO] http.access: request_id=57984de4-a553-4863-8588-ca9d9c5f5800 method=GET path=/ status=302 duration_ms=0.4
+2026-09-15 08:39:56,217 [INFO] werkzeug: 172.31.255.2 - - [15/Sep/2026 08:39:56] "[32mGET / HTTP/1.1[0m" 302 -
+2026-09-15 08:40:24,041 [INFO] http.access: request_id=690c00dc-b7a2-4de4-8c99-64e69f0b4d1e method=GET path=/ status=302 duration_ms=0.2
+2026-09-15 08:40:24,049 [INFO] werkzeug: 127.0.0.1 - - [15/Sep/2026 08:40:24] "[32mGET / HTTP/1.1[0m" 302 -
+2026-09-15 08:40:24,190 [INFO] http.access: request_id=eafe216f-13c6-4753-a84e-4a28526189d4 method=GET path=/ status=302 duration_ms=0.4
+2026-09-15 08:40:24,201 [INFO] werkzeug: 172.31.255.2 - - [15/Sep/2026 08:40:24] "[32mGET / HTTP/1.1[0m" 302 -
+2026-09-15 08:40:24,337 [INFO] http.access: request_id=8f3f183a-5a6a-4516-a9f9-dd31075b04e1 method=GET path=/login status=200 duration_ms=1.4
+2026-09-15 08:40:24,348 [INFO] werkzeug: 172.31.255.3 - - [15/Sep/2026 08:40:24] "GET /login HTTP/1.1" 200 -
+2026-09-15 08:41:53,253 [INFO] http.access: request_id=84ffa0fc-b799-4c5b-8880-58884d1d0b79 method=GET path=/ status=302 duration_ms=0.4
+2026-09-15 08:41:53,258 [INFO] werkzeug: 172.31.255.2 - - [15/Sep/2026 08:41:53] "[32mGET / HTTP/1.1[0m" 302 -
+2026-09-15 08:41:58,538 [INFO] werkzeug:  * Detected change in '/workspace/projects/platform_app/__init__.py', reloading
+2026-09-15 08:41:58,777 [INFO] werkzeug:  * Restarting with stat
+2026-09-15 08:41:59,584 [WARNING] werkzeug:  * Debugger is active!
+2026-09-15 08:41:59,585 [INFO] werkzeug:  * Debugger PIN: 878-600-771
+2026-09-15 08:41:59,619 [INFO] http.access: request_id=40be1aa3-5f6a-4fbe-80d6-be98239f6770 method=GET path=/ status=302 duration_ms=0.5
+2026-09-15 08:41:59,628 [INFO] werkzeug: 172.31.255.3 - - [15/Sep/2026 08:41:59] "[32mGET / HTTP/1.1[0m" 302 -
+2026-09-15 08:42:27,405 [INFO] http.access: request_id=d2066db1-c902-4631-8626-61495eacc908 method=GET path=/ status=302 duration_ms=0.4
+2026-09-15 08:42:27,420 [INFO] werkzeug: 172.31.255.3 - - [15/Sep/2026 08:42:27] "[32mGET / HTTP/1.1[0m" 302 -
+2026-09-15 08:42:27,602 [INFO] http.access: request_id=2d44e2dc-dbd7-42c3-a9f3-64ad94ef5a4b method=GET path=/login status=200 duration_ms=22.5
+2026-09-15 08:42:27,605 [INFO] werkzeug: 172.31.255.3 - - [15/Sep/2026 08:42:27] "GET /login HTTP/1.1" 200 -
+2026-09-15 08:42:27,687 [INFO] http.access: request_id=88931610-bc76-412f-a6a4-40aafba1ea4d method=GET path=/login status=200 duration_ms=1.6
+2026-09-15 08:42:27,692 [INFO] werkzeug: 172.31.255.3 - - [15/Sep/2026 08:42:27] "GET /login HTTP/1.1" 200 -
+2026-09-15 08:43:02,305 [INFO] http.access: request_id=e2c3403e-7310-4abf-8bbf-13290f3d8209 method=GET path=/ status=302 duration_ms=0.4
+2026-09-15 08:43:02,314 [INFO] werkzeug: 127.0.0.1 - - [15/Sep/2026 08:43:02] "[32mGET / HTTP/1.1[0m" 302 -
+2026-09-15 08:43:26,209 [INFO] http.access: request_id=2a3e8168-713d-4acf-a42c-691f1179bb52 method=GET path=/ status=302 duration_ms=0.4
+2026-09-15 08:43:26,215 [INFO] werkzeug: 172.31.255.3 - - [15/Sep/2026 08:43:26] "[32mGET /?t=1789461805 HTTP/1.1[0m" 302 -
+2026-09-15 08:43:26,306 [INFO] http.access: request_id=9a04c0c6-5aa7-43ce-b4fb-58ff35afde6f method=GET path=/login status=200 duration_ms=1.5
+2026-09-15 08:43:26,311 [INFO] werkzeug: 172.31.255.2 - - [15/Sep/2026 08:43:26] "GET /login?t=1789461806 HTTP/1.1" 200 -
+2026-09-15 08:43:57,822 [INFO] http.access: request_id=ccf771c3-2980-4e22-85d4-2e9b1de6e646 method=GET path=/ status=302 duration_ms=0.5
+2026-09-15 08:43:57,830 [INFO] werkzeug: 172.31.255.2 - - [15/Sep/2026 08:43:57] "[32mGET /?cb1789461837=1 HTTP/1.1[0m" 302 -
+2026-09-15 08:45:10,796 [INFO] http.access: request_id=ea20f72d-49e2-4980-beb6-fc17c5c5e177 method=GET path=/ status=302 duration_ms=0.4
+2026-09-15 08:45:10,802 [INFO] werkzeug: 127.0.0.1 - - [15/Sep/2026 08:45:10] "[32mGET /sandboxes/69d6b60c-f365-483d-a10b-7ba3e4d97c75/proxy/5173/ HTTP/1.1[0m" 302 -
+2026-09-15 08:46:44,550 [INFO] werkzeug:  * Detected change in '/workspace/projects/platform_app/__init__.py', reloading
+2026-09-15 08:46:44,762 [INFO] werkzeug:  * Restarting with stat
+2026-09-15 08:46:45,550 [WARNING] werkzeug:  * Debugger is active!
+2026-09-15 08:46:45,550 [INFO] werkzeug:  * Debugger PIN: 878-600-771
+2026-09-15 08:47:16,585 [INFO] http.access: request_id=64c6eae1-56df-4f7f-940b-4dadf5a28243 method=GET path=/login status=200 duration_ms=28.2
+2026-09-15 08:47:16,591 [INFO] werkzeug: 127.0.0.1 - - [15/Sep/2026 08:47:16] "GET /login HTTP/1.1" 200 -
+2026-09-15 08:47:16,716 [INFO] http.access: request_id=0f2f5cc7-7a95-44be-919f-f4ede349eb5f method=GET path=/ status=302 duration_ms=0.4
+2026-09-15 08:47:16,725 [INFO] werkzeug: 172.31.255.3 - - [15/Sep/2026 08:47:16] "[32mGET /?t=1789462036 HTTP/1.1[0m" 302 -
+2026-09-15 08:47:16,833 [INFO] http.access: request_id=2eb9eae5-18ba-4a05-aeb7-3ef348dc5555 method=GET path=/login status=200 duration_ms=1.6
+2026-09-15 08:47:16,838 [INFO] werkzeug: 172.31.255.2 - - [15/Sep/2026 08:47:16] "GET /login?t=1789462036 HTTP/1.1" 200 -
+2026-09-15 08:47:42,314 [INFO] http.access: request_id=ef113a9c-7a67-4c39-9bc8-8c700b3a7aca method=GET path=/ status=302 duration_ms=0.5
+2026-09-15 08:47:42,324 [INFO] werkzeug: 172.31.255.3 - - [15/Sep/2026 08:47:42] "[32mGET /?verify1789462062=1 HTTP/1.1[0m" 302 -
+2026-09-15 08:49:34,397 [INFO] werkzeug:  * Detected change in '/workspace/projects/platform_app/blueprints/auth.py', reloading
+2026-09-15 08:49:34,600 [INFO] werkzeug:  * Restarting with stat
+2026-09-15 08:49:35,405 [WARNING] werkzeug:  * Debugger is active!
+2026-09-15 08:49:35,406 [INFO] werkzeug:  * Debugger PIN: 878-600-771
+2026-09-15 08:50:08,673 [INFO] http.access: request_id=99bff814-c490-458d-8b14-ebf63bca5dda method=GET path=/ status=200 duration_ms=26.3
+2026-09-15 08:50:08,678 [INFO] werkzeug: 172.31.255.2 - - [15/Sep/2026 08:50:08] "GET / HTTP/1.1" 200 -
+2026-09-15 08:50:08,791 [INFO] http.access: request_id=c622f968-38c2-4e03-b3b3-6c3b283269fb method=GET path=/ status=200 duration_ms=1.7
+2026-09-15 08:50:08,796 [INFO] werkzeug: 172.31.255.3 - - [15/Sep/2026 08:50:08] "GET / HTTP/1.1" 200 -
+2026-09-15 08:50:08,894 [INFO] http.access: request_id=3f6d8751-fab4-4a20-935a-c58cf53fa315 method=GET path=/ status=200 duration_ms=0.8
+2026-09-15 08:50:08,897 [INFO] werkzeug: 172.31.255.2 - - [15/Sep/2026 08:50:08] "GET / HTTP/1.1" 200 -
+2026-09-15 08:50:49,931 [INFO] http.access: request_id=65591b5e-f18e-47d7-85cb-176dfee8ab47 method=GET path=/ status=200 duration_ms=1.6
+2026-09-15 08:50:49,936 [INFO] werkzeug: 172.31.255.3 - - [15/Sep/2026 08:50:49] "GET / HTTP/1.1" 200 -
+2026-09-15 08:50:50,050 [INFO] http.access: request_id=68ed557a-3914-4f0c-b34f-7acd7fca10a2 method=GET path=/ status=200 duration_ms=1.5
+2026-09-15 08:50:50,055 [INFO] werkzeug: 172.31.255.3 - - [15/Sep/2026 08:50:50] "GET /?nc1789462249=1 HTTP/1.1" 200 -
+2026-09-15 08:52:19,121 [INFO] werkzeug:  * Detected change in '/workspace/projects/platform_app/session_store.py', reloading
+2026-09-15 08:52:19,314 [INFO] werkzeug:  * Restarting with stat
+2026-09-15 08:52:20,116 [WARNING] werkzeug:  * Debugger is active!
+2026-09-15 08:52:20,116 [INFO] werkzeug:  * Debugger PIN: 878-600-771
+2026-09-15 08:52:42,212 [INFO] sid.debug: open_session path=/ from_values=False from_header=False cookie_names=['session', 'whu_sid'] sid_len=43
+2026-09-15 08:52:42,245 [INFO] http.access: request_id=19985982-860e-4dec-89cb-51a073e12c79 method=GET path=/ status=200 duration_ms=24.6
+2026-09-15 08:52:42,250 [INFO] werkzeug: 172.31.255.2 - - [15/Sep/2026 08:52:42] "GET /?dbg1789462362=1 HTTP/1.1" 200 -
+2026-09-15 08:53:25,987 [INFO] werkzeug:  * Detected change in '/workspace/projects/platform_app/session_store.py', reloading
+2026-09-15 08:53:26,188 [INFO] werkzeug:  * Restarting with stat
+2026-09-15 08:53:26,965 [WARNING] werkzeug:  * Debugger is active!
+2026-09-15 08:53:26,970 [INFO] werkzeug:  * Debugger PIN: 878-600-771
+2026-09-15 08:53:54,397 [INFO] http.access: request_id=42ea4b87-0c5f-44d7-8688-c534604023cf method=GET path=/ status=200 duration_ms=23.5
+2026-09-15 08:53:54,402 [INFO] werkzeug: 172.31.255.2 - - [15/Sep/2026 08:53:54] "GET / HTTP/1.1" 200 -
+2026-09-15 08:53:54,520 [INFO] http.access: request_id=62d59933-1628-405d-ae02-940dcae551be method=GET path=/ status=200 duration_ms=0.8
+2026-09-15 08:53:54,525 [INFO] werkzeug: 172.31.255.2 - - [15/Sep/2026 08:53:54] "GET / HTTP/1.1" 200 -
+2026-09-15 08:53:54,611 [INFO] http.access: request_id=3dcbc125-5edb-4e44-93db-ef75a9b26397 method=GET path=/login status=200 duration_ms=0.5
+2026-09-15 08:53:54,614 [INFO] werkzeug: 172.31.255.3 - - [15/Sep/2026 08:53:54] "GET /login HTTP/1.1" 200 -
+2026-09-15 08:53:54,837 [INFO] http.access: request_id=8fc5374c-f2a6-4981-b25e-428ffcff1a32 method=POST path=/login status=302 duration_ms=113.1
+2026-09-15 08:53:54,841 [INFO] werkzeug: 172.31.255.3 - - [15/Sep/2026 08:53:54] "[32mPOST /login HTTP/1.1[0m" 302 -
+2026-09-15 08:53:55,005 [INFO] http.access: request_id=8db2507d-1819-40a9-91f1-20d661df0d10 method=GET path=/student/home status=200 duration_ms=62.4
+2026-09-15 08:53:55,009 [INFO] werkzeug: 172.31.255.3 - - [15/Sep/2026 08:53:55] "GET /student/home?_sid=HnqSmI1dGWqffTC1ahfgGXQWoQ850jBuP1iqrVyBcOE HTTP/1.1" 200 -

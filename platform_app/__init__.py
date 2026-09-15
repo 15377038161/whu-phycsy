@@ -36,11 +36,12 @@ class _SandboxProxyPrefixStripper:
 
     The platform preview proxy forwards requests without stripping its routing
     prefix, so Flask sees /sandboxes/.../proxy/5173/login and 404s. This
-    middleware rewrites PATH_INFO to the inner path (and records the prefix in
-    SCRIPT_NAME so url_for/_external URLs keep working behind the proxy).
+    middleware rewrites PATH_INFO to the inner path. It deliberately does NOT
+    touch SCRIPT_NAME: echoing the internal prefix into url_for/redirect
+    Location URLs would leak /sandboxes/.../proxy/<port> into browser-visible
+    addresses, which the gateway then blocks (preview shows a blocked page).
+    Browser-facing URLs must stay root-relative on the subdomain.
     """
-
-    _PREFIX_RE = None  # compiled lazily
 
     def __init__(self, app):
         import re
@@ -52,10 +53,7 @@ class _SandboxProxyPrefixStripper:
         path = environ.get("PATH_INFO", "")
         match = self._prefix_re.match(path)
         if match:
-            prefix = match.group(0)
-            inner = path[len(prefix):] or "/"
-            environ["SCRIPT_NAME"] = environ.get("SCRIPT_NAME", "") + prefix
-            environ["PATH_INFO"] = inner
+            environ["PATH_INFO"] = path[match.end():] or "/"
         return self.app(environ, start_response)
 
 
@@ -150,8 +148,9 @@ def create_app(test_config: dict | None = None) -> Flask:
         pyodide_url = urlsplit(app.config["PYODIDE_BASE_URL"])
         pyodide_origin = f"{pyodide_url.scheme}://{pyodide_url.netloc}" if pyodide_url.scheme in {"http", "https"} and pyodide_url.netloc else ""
         external = f" {pyodide_origin}" if pyodide_origin else ""
-        response.headers["X-Frame-Options"] = "DENY"
         response.headers["X-Content-Type-Options"] = "nosniff"
+        # 预览平台通过 iframe 嵌套页面：不能输出 X-Frame-Options: DENY，
+        # frame-ancestors 也必须允许平台域，否则预览面板显示"已拦截"图标。
         response.headers["Content-Security-Policy"] = (
             "default-src 'self'; "
             "img-src 'self' data:; "
@@ -161,8 +160,13 @@ def create_app(test_config: dict | None = None) -> Flask:
             "media-src 'self' blob:; "
             f"connect-src 'self'{external}; "
             f"worker-src 'self' blob:{external}; "
-            "frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+            "frame-ancestors 'self' https://*.cxiagents.com; base-uri 'self'; form-action 'self'"
         )
+        # 动态页面/重定向禁止缓存：平台代理会缓存 302，导致会话票据过期后仍跳旧地址
+        if request.path.startswith("/static/"):
+            response.headers["Cache-Control"] = "public, max-age=3600"
+        else:
+            response.headers["Cache-Control"] = "no-store"
         if app.config["APP_ENV"] == "production":
             response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
