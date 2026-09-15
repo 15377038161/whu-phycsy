@@ -101,16 +101,37 @@ def create_app(test_config: dict | None = None) -> Flask:
     app.register_blueprint(teacher_bp)
     app.register_blueprint(api_bp)
 
+    from .session_store import TicketSessionInterface, current_sid
+
+    app.session_interface = TicketSessionInterface()
+
     def csrf_token() -> str:
         token = session.get("_csrf_token")
         if not token:
             token = secrets.token_urlsafe(32)
             session["_csrf_token"] = token
+            session.modified = True
         return token
 
     @app.context_processor
     def inject_csrf_token():
-        return {"csrf_token": csrf_token}
+        return {"csrf_token": csrf_token, "_sid": current_sid()}
+
+    @app.after_request
+    def propagate_sid(response):
+        """Keep the session ticket alive across redirects and page URLs.
+
+        The proxy strips cookies, so the _sid ticket must travel in the URL.
+        Redirects get the ticket appended to Location; page propagation for
+        links/forms is handled client-side by static/sid.js.
+        """
+        sid = current_sid()
+        if sid and response.status_code in {301, 302, 303, 307, 308}:
+            location = response.headers.get("Location", "")
+            if location.startswith("/") and "_sid=" not in location:
+                sep = "&" if "?" in location else "?"
+                response.headers["Location"] = f"{location}{sep}_sid={sid}"
+        return response
 
     @app.before_request
     def protect_state_changes():

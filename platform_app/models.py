@@ -188,6 +188,22 @@ class StudentExperimentProgress(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, onupdate=now)
 
 
+class AppSession(Base):
+    """Server-side session store backing the _sid URL-ticket session mechanism.
+
+    The platform preview/deploy proxy strips both Set-Cookie response headers
+    and inbound Cookie request headers, so Flask's default cookie session
+    cannot survive a round trip through the proxy. Session data is persisted
+    here, keyed by an opaque ticket carried in the URL (_sid).
+    """
+
+    __tablename__ = "app_sessions"
+    sid: Mapped[str] = mapped_column(String(96), primary_key=True)
+    data: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+
+
 class Review(Base):
     __tablename__ = "reviews"
     id: Mapped[str] = mapped_column(String(64), primary_key=True, default=uid)

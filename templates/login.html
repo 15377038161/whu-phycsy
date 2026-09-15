@@ -18,6 +18,8 @@
       <label>账号<span class="input-shell"><i data-lucide="user-round"></i><input name="username" autocomplete="username" required autofocus placeholder="请输入学号或教师账号"></span></label>
       <label>密码<span class="input-shell"><i data-lucide="lock-keyhole"></i><input name="password" type="password" autocomplete="current-password" required placeholder="请输入密码"></span></label>
       <button class="primary large-button" type="submit">进入平台 <i data-lucide="arrow-right"></i></button>
+      <div class="login-divider"><span></span>或<span></span></div>
+      <a class="secondary-button large-button oauth-chaoxing-button" href="{{ url_for('auth.chaoxing_login') }}"><i data-lucide="graduation-cap"></i>超星学习通一键登录</a>
     </form>
   </div>
 </section>

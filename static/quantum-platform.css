@@ -635,3 +635,25 @@ body.is-offline [data-requires-online]{opacity:.5;cursor:not-allowed}.empty-tabl
 .student-shell .selected-level-grid .selected-level-card{flex:0 0 clamp(360px,31vw,490px);min-width:0;scroll-snap-align:start;scroll-snap-stop:always}
 @media(max-width:900px){.student-shell .selected-level-grid .selected-level-card{flex-basis:clamp(340px,72vw,430px)}}
 @media(max-width:680px){.student-shell .selected-level-grid{gap:16px}.student-shell .selected-level-grid .selected-level-card{flex-basis:min(84vw,330px)}}
+
+/* 登录页：超星一键登录入口 */
+.login-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 16px 0;
+  color: var(--text-tertiary, #94a3b8);
+}
+.login-divider span {
+  flex: 1;
+  height: 1px;
+  background: currentColor;
+  opacity: 0.25;
+}
+.oauth-chaoxing-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  text-decoration: none;
+}

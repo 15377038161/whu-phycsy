@@ -9,6 +9,8 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='quantum-platform.css', v='20260813-multidevice-v1') }}">
   <script defer src="{{ url_for('static', filename='vendor/lucide/lucide.min.js') }}"></script>
   {% if user and user.role == 'student' %}<link rel="stylesheet" href="{{ url_for('static', filename='vendor/katex/katex.min.css') }}"><script defer src="{{ url_for('static', filename='vendor/katex/katex.min.js') }}"></script>{% endif %}
+  <script>window.__SID = "{{ _sid }}";</script>
+  <script defer src="{{ url_for('static', filename='sid.js', v='20260915-sid-v1') }}"></script>
   <script defer src="{{ url_for('static', filename='platform.js', v='20260813-multidevice-v1') }}"></script>
   {% block head %}{% endblock %}
 </head>
