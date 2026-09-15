@@ -1,0 +1,11 @@
+{
+  "name": "whu-quantum-physics-platform",
+  "version": "1.0.0",
+  "private": true,
+  "description": "WHU quantum physics experiment platform (Python/Flask). This file exists only to satisfy the platform Node.js toolchain preflight (npm install); the real build/run is handled by scripts/build.sh and scripts/start.sh per .coder.",
+  "scripts": {
+    "build": "bash ./scripts/build.sh",
+    "start": "bash ./scripts/start.sh",
+    "dev": "bash ./scripts/dev.sh"
+  }
+}
