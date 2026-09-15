@@ -19,7 +19,8 @@ if [ -x ".venv/bin/python" ] && .venv/bin/python -m pip --version >/dev/null 2>&
     pip install -q -r requirements.txt
 else
     rm -rf .venv
-    python3 -m pip install -q --user -r requirements.txt
+    python3 -m pip install -q --user --break-system-packages -r requirements.txt || \
+    python3 -m pip install -q --break-system-packages -r requirements.txt
 fi
 
 echo "Build completed successfully"

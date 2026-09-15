@@ -1,11 +1,11 @@
 [project]
-requires = ["python-3.11"]
+requires = ["nodejs-24"]
 
 [dev]
-build = ["sh", "-c", "pip3 install -q --break-system-packages -r requirements.txt"]
-run = ["sh", "-c", "python3 app.py"]
+build = ["bash", "./scripts/build.sh"]
+run = ["bash", "./scripts/dev.sh"]
 
 [deploy]
 target = "server"
-build = ["sh", "-c", "pip3 install -q --break-system-packages -r requirements.txt"]
-run = ["sh", "-c", "python3 app.py"]
+build = ["bash", "./scripts/build.sh"]
+run = ["bash", "./scripts/start.sh"]
