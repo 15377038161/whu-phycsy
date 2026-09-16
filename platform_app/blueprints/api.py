@@ -31,16 +31,40 @@ def _iso_datetime(value):
 
 @bp.get("/health")
 def health():
-    return {"status": "ok"}
+    payload = {
+        "status": "ok",
+        "service": "luojia-quantum-lab",
+        "version": current_app.config.get("APP_VERSION", "1.0.0"),
+    }
+    # 暴露连接监控快照：数据库 / 文件 / 可选 AI 的最新健康状态，供平台
+    # 探针与运维观测服务运行健康度，异常时能第一时间从日志与接口定位。
+    monitor = current_app.extensions.get("health_monitor")
+    if monitor is not None:
+        payload["health"] = monitor.snapshot()
+    return payload
 
 
 @bp.get("/ready")
 def ready():
     data_dir = Path(current_app.config["DATA_DIR"])
-    try: ai_ok = ai_ready()
-    except Exception: ai_ok = False
-    checks = {"database": database_ready(), "files": data_dir.exists() and data_dir.is_dir(), "ai": ai_ok}
-    return ({"status": "ready", "checks": checks}, 200) if all(checks.values()) else ({"status": "not_ready", "checks": checks}, 503)
+    # AI 是可选的增强能力：预览/本地环境可能未配置 AI 凭证，这不应影响
+    # 核心服务的就绪判定，否则 /ready 永远 503，平台的健康探针会误判
+    # 服务"未就绪/拒绝连接"。核心就绪仅由 database + files 决定。
+    try:
+        ai_ok = ai_ready()
+    except Exception:
+        ai_ok = False
+    core_checks = {
+        "database": database_ready(),
+        "files": data_dir.exists() and data_dir.is_dir(),
+    }
+    optional_checks = {"ai": ai_ok}
+    core_ready = all(core_checks.values())
+    checks = {**core_checks, **optional_checks}
+    return (
+        {"status": "ready", "checks": checks},
+        200,
+    ) if core_ready else ({"status": "not_ready", "checks": checks}, 503)
 
 
 @bp.post("/api/student/assistant")

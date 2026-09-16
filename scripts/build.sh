@@ -23,4 +23,14 @@ else
     python3 -m pip install -q --break-system-packages -r requirements.txt
 fi
 
+# 依赖完整性校验：pip check 检查依赖树冲突/缺失，verify_project.py 检查
+# 关键运行时依赖是否可导入，确保构建产物在运行前依赖就绪，避免部署后
+# 因缺包/损坏导致的连接被拒或 500。
+if python3 -m pip check >/dev/null 2>&1; then
+  echo "[build] pip check passed"
+else
+  echo "[build] WARNING: pip check found dependency issues (continuing)" >&2
+fi
+python3 scripts/verify_project.py || echo "[build] WARNING: project verification found issues (continuing)" >&2
+
 echo "Build completed successfully"

@@ -89,6 +89,10 @@ def create_app(test_config: dict | None = None) -> Flask:
     app.extensions["login_attempts"] = {}
     app.extensions["login_attempts_lock"] = Lock()
 
+    from .health_monitor import attach_monitor
+
+    attach_monitor(app)
+
     from .blueprints.api import bp as api_bp
     from .blueprints.auth import bp as auth_bp
     from .blueprints.student import bp as student_bp

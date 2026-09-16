@@ -19,6 +19,7 @@
 - 应用按 `APP_ENV` 加载 `.env` / `.env.<APP_ENV>` / `.env.local`，平台注入环境变量优先。
 - 预览用 `APP_ENV=preview` + SQLite；生产必须 `APP_ENV=production` + PostgreSQL `DATABASE_URL`。
 - 新增了 `platform_app/logging_utils.py`（结构化访问日志 + request_id），级别受 `LOG_LEVEL` 控制。
+- 新增了 `platform_app/health_monitor.py`（启动自检 + 后台连接监控）：`create_app` 启动时同步校验核心依赖可导入、数据库可达、数据目录存在；随后守护线程周期性复查 database/files（`HEALTH_CHECK_INTERVAL_SECONDS`，默认 60s）与可选 AI（`HEALTH_AI_INTERVAL_SECONDS`，默认 300s）。快照经 `/health` 暴露，`/ready` 仅由 database+files 决定（AI 为可选增强，未配置不影响就绪，避免平台探针误判连接被拒）。
 - 交付/排障见 `DEPLOY_ADAPTATION.md`。
 
 ## 内置数据库接入契约（Supabase / Data API）

@@ -1,0 +1,30 @@
+2026-09-16 10:41:14,788 [INFO] health.monitor: startup self-check passed (deps ok, database ok, files ok)
+2026-09-16 10:41:14,790 [INFO] health.monitor: health monitor started (core every 60s, ai every 300s)
+2026-09-16 10:41:14,792 [WARNING] health.monitor: health monitor: optional AI service is not ready
+ * Serving Flask app 'platform_app'
+ * Debug mode: off
+2026-09-16 10:41:15,029 [INFO] werkzeug: [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5173
+ * Running on http://172.22.114.69:5173
+2026-09-16 10:41:15,029 [INFO] werkzeug: [33mPress CTRL+C to quit[0m
+2026-09-16 10:41:33,746 [INFO] http.access: request_id=5f6be2fa-5373-4a90-8e3e-190c4bde6f78 method=GET path=/health status=200 duration_ms=0.7
+2026-09-16 10:41:33,765 [INFO] werkzeug: 127.0.0.1 - - [16/Sep/2026 10:41:33] "GET /health HTTP/1.1" 200 -
+2026-09-16 10:41:42,060 [INFO] http.access: request_id=677ce86d-5d70-4a31-be06-3c3ef95d84ac method=GET path=/ready status=200 duration_ms=0.8
+2026-09-16 10:41:42,069 [INFO] werkzeug: 127.0.0.1 - - [16/Sep/2026 10:41:42] "GET /ready HTTP/1.1" 200 -
+2026-09-16 10:41:42,106 [INFO] http.access: request_id=57159b13-ee29-4ebf-8808-a8e064539922 method=GET path=/ status=200 duration_ms=25.9
+2026-09-16 10:41:42,115 [INFO] werkzeug: 127.0.0.1 - - [16/Sep/2026 10:41:42] "GET / HTTP/1.1" 200 -
+2026-09-16 10:41:42,138 [INFO] http.access: request_id=e29dbcd4-5cab-4ecf-b3a8-5192cadb14b8 method=GET path=/login status=200 duration_ms=1.5
+2026-09-16 10:41:42,150 [INFO] werkzeug: 127.0.0.1 - - [16/Sep/2026 10:41:42] "GET /login HTTP/1.1" 200 -
+2026-09-16 10:42:49,180 [INFO] http.access: request_id=dbe6473c-11f0-407c-a007-375af3865c57 method=GET path=/health status=200 duration_ms=0.4
+2026-09-16 10:42:49,199 [INFO] werkzeug: 127.0.0.1 - - [16/Sep/2026 10:42:49] "GET /health HTTP/1.1" 200 -
+2026-09-16 10:42:49,219 [INFO] http.access: request_id=b193dc96-c68c-49b9-8003-218d5384c60c method=GET path=/ready status=200 duration_ms=0.9
+2026-09-16 10:42:49,226 [INFO] werkzeug: 127.0.0.1 - - [16/Sep/2026 10:42:49] "GET /ready HTTP/1.1" 200 -
+2026-09-16 10:43:05,060 [INFO] http.access: request_id=7b2dac1a-459c-4e5d-bc6c-b0a461aa294e method=GET path=/health status=200 duration_ms=0.2
+2026-09-16 10:43:05,079 [INFO] werkzeug: 127.0.0.1 - - [16/Sep/2026 10:43:05] "GET /health HTTP/1.1" 200 -
+2026-09-16 10:43:06,137 [INFO] http.access: request_id=135f5c6c-1e66-4d81-bf6e-0d3e8bf4b366 method=GET path=/ready status=200 duration_ms=1.0
+2026-09-16 10:43:06,141 [INFO] werkzeug: 127.0.0.1 - - [16/Sep/2026 10:43:06] "GET /ready HTTP/1.1" 200 -
+2026-09-16 10:43:07,337 [INFO] http.access: request_id=e150c4ed-a86b-4831-b2f3-b09f81f2ccb9 method=GET path=/ status=200 duration_ms=0.9
+2026-09-16 10:43:07,343 [INFO] werkzeug: 127.0.0.1 - - [16/Sep/2026 10:43:07] "GET / HTTP/1.1" 200 -
+2026-09-16 10:43:08,388 [INFO] http.access: request_id=a5ed0d03-13be-4290-abba-ac69b9854448 method=GET path=/login status=200 duration_ms=0.8
+2026-09-16 10:43:08,392 [INFO] werkzeug: 127.0.0.1 - - [16/Sep/2026 10:43:08] "GET /login HTTP/1.1" 200 -
