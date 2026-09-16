@@ -12,7 +12,7 @@ from sqlalchemy import select
 from werkzeug.security import check_password_hash
 
 from ..db import db_session, transaction
-from ..models import AuditEvent, FileAsset, User
+from ..models import AuditEvent, Course, Enrollment, FileAsset, User
 from ..services.accounts import change_password
 
 bp = Blueprint("auth", __name__)
@@ -249,6 +249,14 @@ def chaoxing_callback():
             return redirect(url_for("auth.login"))
         elif realname and user.name != realname:
             user.name = realname
+        # 超星 SSO 学生默认加入系统课程：确保登录后能正常选关、进入实验。
+        # 仅当该学生尚未加入任何课程时自动补一条选课记录，避免与教师手动导入冲突。
+        if user.role == "student":
+            existing = db.scalar(select(Enrollment).where(Enrollment.student_id == user.id))
+            if existing is None:
+                default_course = db.scalar(select(Course).order_by(Course.created_at, Course.id))
+                if default_course is not None:
+                    db.add(Enrollment(course_id=default_course.id, student_id=user.id))
         db.add(AuditEvent(
             actor_id=user.id,
             action="login.chaoxing",
