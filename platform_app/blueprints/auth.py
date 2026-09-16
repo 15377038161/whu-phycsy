@@ -14,6 +14,7 @@ from werkzeug.security import check_password_hash
 from ..db import db_session, transaction
 from ..models import AuditEvent, Course, Enrollment, FileAsset, User
 from ..services.accounts import change_password
+from ..session_store import current_sid
 
 bp = Blueprint("auth", __name__)
 LOGIN_FAILURE_LIMIT = 5
@@ -171,6 +172,12 @@ def _decode_jwt_payload(token: str) -> dict:
 def chaoxing_login():
     """发起超星一键登录：换取授权地址并顶层跳转。"""
     callback = url_for("auth.chaoxing_callback", _external=True)
+    # 超星是顶层跳转（浏览器整页离开预览 iframe，再跳回），中途会丢失 Cookie
+    # 与 URL 里的 _sid 票据。把当前会话票据随 redirect_uri 带回，授权回跳后
+    # open_session 才能复用同一会话，避免平台判定“未登录”并弹出拦截页。
+    sid = current_sid()
+    if sid:
+        callback = f"{callback}{'&' if '?' in callback else '?'}_sid={sid}"
     base = _chaoxing_auth_base()
     try:
         resp = httpx.get(
