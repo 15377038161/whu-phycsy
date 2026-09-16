@@ -79,7 +79,12 @@ def create_app(test_config: dict | None = None) -> Flask:
     if app.config["APP_ENV"] == "production" and not app.config["DATABASE_URL"].startswith(("postgresql://", "postgresql+psycopg://")):
         raise RuntimeError("Production requires PostgreSQL DATABASE_URL")
     Path(app.config["DATA_DIR"]).mkdir(parents=True, exist_ok=True)
-    app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1, x_prefix=1)
+    # 只信任 X-Forwarded-Proto/Host（用于正确生成 https scheme 与外部 Host），
+    # 绝不能启用 x_prefix：平台预览网关会在 X-Forwarded-Prefix 里带上内部路由
+    # 前缀 /sandboxes/<id>/proxy/<port>，x_prefix=1 会把它注入 SCRIPT_NAME，
+    # 导致 url_for() 生成的重定向 Location 泄露该内部前缀，浏览器跟随跳转后
+    # 网关直接拦截，预览表现为「拒绝连接」。
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1, x_prefix=0)
     app.wsgi_app = _SandboxProxyPrefixStripper(app.wsgi_app)
     setup_logging(app)
     app.before_request(before_request_log)
