@@ -75,6 +75,22 @@ function setupWorkspaceStepNavigation(){
   previous.addEventListener("click",()=>{const index=order.indexOf(active());if(index>0)activateTab(order[index-1])});next.addEventListener("click",()=>{const index=order.indexOf(active());if(index<order.length-1)activateTab(order[index+1])});document.addEventListener("workspace:tab",event=>update(event.detail.name));update(active());
 }
 
+function setupLoginRoleTabs(){
+  const buttons=$$("[data-login-role]");if(!buttons.length)return;
+  const hints=$$("[data-login-hint-student],[data-login-hint-teacher]");
+  const labels=$$("[data-login-label-student],[data-login-label-teacher]");
+  const username=$("[data-login-username]");
+  const placeholders={student:"请输入学号",teacher:"请输入教师账号"};
+  const apply=role=>{
+    buttons.forEach(button=>button.setAttribute("aria-selected",String(button.dataset.loginRole===role)));
+    hints.forEach(hint=>hint.classList.toggle("is-hidden",hint.dataset.loginHintStudent!==undefined&&role!=="student"||hint.dataset.loginHintTeacher!==undefined&&role!=="teacher"));
+    labels.forEach(label=>label.classList.toggle("is-hidden",label.dataset.loginLabelStudent!==undefined&&role!=="student"||label.dataset.loginLabelTeacher!==undefined&&role!=="teacher"));
+    if(username){username.placeholder=placeholders[role]||"";username.setAttribute("aria-label",role==="student"?"学号":"教师账号")}
+  };
+  buttons.forEach(button=>button.addEventListener("click",()=>apply(button.dataset.loginRole)));
+  apply("student");
+}
+
 function setupStudentRecords(){
   const root=$("[data-student-records]");if(!root)return;const controls=$$("[data-record-filter]",root),rows=$$("[data-record-state]",root),empty=$("[data-record-empty]",root);
   controls.forEach(control=>control.addEventListener("click",()=>{const filter=control.dataset.recordFilter;controls.forEach(item=>item.classList.toggle("active",item===control));let visible=0;rows.forEach(row=>{const matches=filter==="all"||row.dataset.recordState===filter;row.hidden=!matches;if(matches)visible++});empty?.classList.toggle("is-hidden",visible>0)}));
@@ -437,6 +453,6 @@ document.addEventListener("submit",event=>{const message=event.target.dataset.co
 document.addEventListener("keydown",event=>{const layer=visibleLayer();if(!layer)return;if(event.key==="Escape"){event.preventDefault();closeLayer(layer);return}if(event.key!=="Tab")return;const panel=layer.querySelector('[role="dialog"]')||layer,items=$$(layerFocusable,panel).filter(item=>item.offsetParent!==null);if(!items.length)return;const first=items[0],last=items.at(-1);if(event.shiftKey&&document.activeElement===first){event.preventDefault();last.focus()}else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first.focus()}});
 
 document.addEventListener("DOMContentLoaded",()=>{
-  setupGlobalUX();setupAmbient();setupExperimentGallery();setupAchievements();setupAutoOpenModal();setupWorkspaceStepNavigation();setupStudentRecords();setupLevelPicker();setupQuiz();setupChallenge();setupFit();setupFilters();setupExperimentDraftAssistant();setupEditor();setupQuestionManager();setupReportEditor();setupReport();setupPrincipleFormula();setupAcademicFormulas();setupStudentAssistant();setupTeacherAssistant();setupTeacherAnalytics();refreshIcons();
+  setupGlobalUX();setupAmbient();setupExperimentGallery();setupAchievements();setupAutoOpenModal();setupWorkspaceStepNavigation();setupLoginRoleTabs();setupStudentRecords();setupLevelPicker();setupQuiz();setupChallenge();setupFit();setupFilters();setupExperimentDraftAssistant();setupEditor();setupQuestionManager();setupReportEditor();setupReport();setupPrincipleFormula();setupAcademicFormulas();setupStudentAssistant();setupTeacherAssistant();setupTeacherAnalytics();refreshIcons();
   $$('.flash').forEach(item=>{showToast(item.textContent.trim(),item.classList.contains("error")?"error":"success");item.remove()});
 });

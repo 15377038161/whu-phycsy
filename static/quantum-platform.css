@@ -657,3 +657,39 @@ body.is-offline [data-requires-online]{opacity:.5;cursor:not-allowed}.empty-tabl
   gap: 8px;
   text-decoration: none;
 }
+
+/* 登录页：学生端 / 教师端切换标签 */
+.is-hidden {
+  display: none !important;
+}
+.login-role-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  padding: 5px;
+  margin-bottom: 22px;
+  background: #f0ebe0;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.login-role-tabs button {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+  min-height: 40px;
+  border-radius: 7px;
+  transition: color .2s ease, background .2s ease, box-shadow .2s ease;
+}
+.login-role-tabs button:hover {
+  color: var(--blue);
+}
+.login-role-tabs button[aria-selected="true"] {
+  background: var(--paper);
+  color: var(--blue);
+  box-shadow: 0 2px 8px rgba(38, 31, 22, .12);
+}
+.login-field-label {
+  display: inline-block;
+}

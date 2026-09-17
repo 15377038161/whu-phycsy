@@ -168,6 +168,40 @@ def _decode_jwt_payload(token: str) -> dict:
         return {}
 
 
+# 教师身份自动识别：从超星用户元数据中提取「身份类型 / 单位号」判定角色。
+# 超星 token 的 user_metadata 字段命名不稳定，这里做多字段兼容 + 关键词匹配。
+_TEACHER_UNIT_CODES = {"1385"}  # 武汉大学单位号（教师类）
+_TEACHER_IDENTITY_KEYWORDS = ("teacher", "教师", "老师", "讲师", "教授", "助教", "职工", "教职工")
+
+
+def _detect_chaoxing_role(metadata: dict, claims: dict) -> str:
+    """判定超星用户角色：命中教师身份特征返回 'teacher'，否则 'student'。
+
+    兼容多种可能的字段名（unitid/schoolid/type/role/identity/position/jobtitle 等），
+    命中任一「教师类关键词」或「单位号在教师白名单」即判为教师。
+    """
+    merged = {**claims, **metadata}
+
+    # 1) 单位号白名单：超星教师单位号 1385
+    for key in ("unitid", "unit_id", "unitId", "schoolid", "school_id", "schoolId", "fid", "orgid"):
+        value = str(merged.get(key) or "").strip()
+        if value and value in _TEACHER_UNIT_CODES:
+            return "teacher"
+
+    # 2) 身份类型字段关键词：teacher / 教师 / 老师 / 讲师 / 教授 等
+    for key in ("type", "usertype", "user_type", "role", "roles", "identity", "identity_type",
+                "position", "jobtitle", "job_title", "duty", "title", "category", "group"):
+        value = merged.get(key)
+        if value is None:
+            continue
+        text = value if isinstance(value, str) else json.dumps(value, ensure_ascii=False)
+        lowered = text.casefold()
+        if any(keyword.casefold() in lowered for keyword in _TEACHER_IDENTITY_KEYWORDS):
+            return "teacher"
+
+    return "student"
+
+
 @bp.get("/auth/chaoxing")
 def chaoxing_login():
     """发起超星一键登录：换取授权地址并顶层跳转。"""
@@ -236,7 +270,10 @@ def chaoxing_callback():
         flash("未能获取超星身份信息，请联系管理员。", "error")
         return redirect(url_for("auth.login"))
 
-    # 映射本地用户：按超星 cxid 作为用户名查找，不存在则自动创建学生账号
+    # 教师身份自动识别：从超星元数据判定角色（教师类身份 / 单位号 1385 → teacher）
+    detected_role = _detect_chaoxing_role(metadata, claims)
+
+    # 映射本地用户：按超星 cxid 作为用户名查找，不存在则按识别到的角色创建账号
     username = f"cx_{cxid}"
     with transaction() as db:
         user = db.scalar(select(User).where(User.username == username))
@@ -245,7 +282,7 @@ def chaoxing_callback():
                 id=f"cx_{cxid}"[:64],
                 username=username,
                 name=realname or f"超星用户{cxid[-4:]}",
-                role="student",
+                role=detected_role,
                 password_hash="!chaoxing-oauth-no-password!",
                 active=True,
                 must_change_password=False,
@@ -254,8 +291,12 @@ def chaoxing_callback():
         elif not user.active:
             flash("账号已被停用，请联系管理员。", "error")
             return redirect(url_for("auth.login"))
-        elif realname and user.name != realname:
-            user.name = realname
+        else:
+            if realname and user.name != realname:
+                user.name = realname
+            # 存量账号若此前被识别为学生、而超星元数据已确认为教师，自动升级角色
+            if user.role == "student" and detected_role == "teacher":
+                user.role = "teacher"
         # 超星 SSO 学生默认加入系统课程：确保登录后能正常选关、进入实验。
         # 仅当该学生尚未加入任何课程时自动补一条选课记录，避免与教师手动导入冲突。
         if user.role == "student":
