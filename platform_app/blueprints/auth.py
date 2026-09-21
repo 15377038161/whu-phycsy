@@ -171,14 +171,21 @@ def _decode_jwt_payload(token: str) -> dict:
 # 教师身份自动识别：从超星用户元数据中提取「身份类型 / 单位号」判定角色。
 # 超星 token 的 user_metadata 字段命名不稳定，这里做多字段兼容 + 关键词匹配。
 _TEACHER_UNIT_CODES = {"1385"}  # 武汉大学单位号（教师类）
-_TEACHER_IDENTITY_KEYWORDS = ("teacher", "教师", "老师", "讲师", "教授", "助教", "职工", "教职工")
+# 教师/管理员类关键词：覆盖「教师」与「管理员/admin」两类身份，避免管理员被误判为学生。
+_TEACHER_IDENTITY_KEYWORDS = (
+    "teacher", "教师", "老师", "讲师", "教授", "助教", "职工", "教职工",
+    "admin", "administrator", "管理员", "教务", "教学管理", "辅导员",
+)
+# 学生类反向关键词：命中则排除教师判定（优先于教师关键词）。
+_STUDENT_IDENTITY_KEYWORDS = ("student", "学生", "本科生", "研究生", "博士生", "硕士生")
 
 
 def _detect_chaoxing_role(metadata: dict, claims: dict) -> str:
-    """判定超星用户角色：命中教师身份特征返回 'teacher'，否则 'student'。
+    """判定超星用户角色：命中教师/管理员身份特征返回 'teacher'，否则 'student'。
 
     兼容多种可能的字段名（unitid/schoolid/type/role/identity/position/jobtitle 等），
-    命中任一「教师类关键词」或「单位号在教师白名单」即判为教师。
+    命中任一「教师/管理员类关键词」或「单位号在教师白名单」即判为教师；若同时命中
+    学生关键词则保留学生判定，避免将「学生干部/助教学生」误判为教师。
     """
     merged = {**claims, **metadata}
 
@@ -188,18 +195,61 @@ def _detect_chaoxing_role(metadata: dict, claims: dict) -> str:
         if value and value in _TEACHER_UNIT_CODES:
             return "teacher"
 
-    # 2) 身份类型字段关键词：teacher / 教师 / 老师 / 讲师 / 教授 等
-    for key in ("type", "usertype", "user_type", "role", "roles", "identity", "identity_type",
-                "position", "jobtitle", "job_title", "duty", "title", "category", "group"):
+    # 2) 身份类型字段关键词：teacher / 教师 / 管理员 / admin 等
+    identity_keys = (
+        "type", "usertype", "user_type", "role", "roles", "identity", "identity_type",
+        "identityType", "position", "position_name", "jobtitle", "job_title", "jobTitle",
+        "duty", "title", "category", "group", "usertype_name", "role_name",
+    )
+    hit_teacher = False
+    hit_student = False
+    for key in identity_keys:
         value = merged.get(key)
         if value is None:
             continue
         text = value if isinstance(value, str) else json.dumps(value, ensure_ascii=False)
         lowered = text.casefold()
+        if any(keyword.casefold() in lowered for keyword in _STUDENT_IDENTITY_KEYWORDS):
+            hit_student = True
         if any(keyword.casefold() in lowered for keyword in _TEACHER_IDENTITY_KEYWORDS):
-            return "teacher"
+            hit_teacher = True
+    if hit_teacher and not hit_student:
+        return "teacher"
 
     return "student"
+
+
+_IDENTITY_LOG_KEYS = (
+    "unitid", "unit_id", "unitId", "schoolid", "school_id", "schoolId", "fid", "orgid",
+    "type", "usertype", "user_type", "role", "roles", "identity", "identity_type",
+    "identityType", "position", "position_name", "jobtitle", "job_title", "jobTitle",
+    "duty", "title", "category", "group", "usertype_name", "role_name",
+    "realname", "name", "student_no", "studentno", "sno", "student_id", "studentid",
+)
+
+
+def _mask_value(value: str) -> str:
+    """脱敏：保留首尾各 1 字符，中间以 * 覆盖；过短/空值原样返回。"""
+    if not value:
+        return ""
+    if len(value) <= 2:
+        return "*" * len(value)
+    return f"{value[0]}{'*' * max(1, len(value) - 2)}{value[-1]}"
+
+
+def _identity_diagnostic(metadata: dict, claims: dict) -> dict:
+    """提取身份相关字段用于脱敏日志（不记录 cxid/手机号等敏感主键）。"""
+    merged = {**claims, **metadata}
+    result: dict = {}
+    for key in _IDENTITY_LOG_KEYS:
+        value = merged.get(key)
+        if value is None or value == "":
+            continue
+        if isinstance(value, str):
+            result[key] = _mask_value(value)
+        else:
+            result[key] = value
+    return result
 
 
 # 学生身份自动匹配：超星元数据中提取学号（字段命名不稳定，做多字段兼容）。
@@ -323,6 +373,12 @@ def chaoxing_callback():
 
     # 教师身份自动识别：从超星元数据判定角色（教师类身份 / 单位号 1385 → teacher）
     detected_role = _detect_chaoxing_role(metadata, claims)
+    current_app.logger.info(
+        "chaoxing identity: detected_role=%s cxid=%s fields=%s",
+        detected_role,
+        _mask_value(cxid),
+        _identity_diagnostic(metadata, claims),
+    )
 
     # 学生身份自动匹配：优先用超星元数据中的学号/姓名匹配教师已导入的名单账号，
     # 命中后复用名单账号（学号为 id/username），从而自动完成班级绑定，避免为同一
