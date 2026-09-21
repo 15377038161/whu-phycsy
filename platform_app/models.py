@@ -26,6 +26,7 @@ class User(Base):
     password_hash: Mapped[str] = mapped_column(Text)
     active: Mapped[bool] = mapped_column(Boolean, default=True)
     must_change_password: Mapped[bool] = mapped_column(Boolean, default=False)
+    chaoxing_cxid: Mapped[str | None] = mapped_column(String(64), index=True, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
@@ -34,7 +35,7 @@ class Course(Base):
     id: Mapped[str] = mapped_column(String(64), primary_key=True, default=uid)
     teacher_id: Mapped[str | None] = mapped_column(ForeignKey("users.id"), index=True)
     name: Mapped[str] = mapped_column(String(160))
-    min_experiments_required: Mapped[int] = mapped_column(Integer, default=3, nullable=False)
+    min_experiments_required: Mapped[int] = mapped_column(Integer, default=2, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 

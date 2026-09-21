@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import csv
 import io
 import re
 from dataclasses import dataclass
@@ -117,6 +118,36 @@ def _read_xls(data: bytes) -> list[tuple[str, list[tuple[int, list[str]]]]]:
     return sheets
 
 
+def _decode_csv_bytes(data: bytes) -> str:
+    for encoding in ("utf-8-sig", "gb18030", "utf-16", "big5"):
+        try:
+            return data.decode(encoding)
+        except (UnicodeDecodeError, LookupError):
+            continue
+    return data.decode("utf-8", errors="replace")
+
+
+def _read_csv(data: bytes) -> list[tuple[str, list[tuple[int, list[str]]]]]:
+    text = _decode_csv_bytes(data)
+    try:
+        dialect = csv.Sniffer().sniff(text[:4096], delimiters=",;\t")
+    except csv.Error:
+        dialect = csv.excel
+    reader = csv.reader(io.StringIO(text), dialect)
+    rows = []
+    for row_no, raw in enumerate(reader, start=1):
+        if row_no > MAX_ROSTER_ROWS + HEADER_SCAN_ROWS:
+            break
+        values = [_cell_text(value) for value in raw]
+        while values and not values[-1]:
+            values.pop()
+        if any(values):
+            rows.append((row_no, values))
+    if not rows:
+        return []
+    return [("CSV", rows)]
+
+
 def _header_score(header: str, aliases: set[str], negatives: set[str] | None = None) -> int:
     normalized = _normalized_header(header)
     if not normalized:
@@ -227,8 +258,8 @@ def _best_sheet_mapping(sheets):
 def parse_student_roster(upload, default_password: str = "") -> ParsedStudentRoster:
     filename = upload.filename or ""
     suffix = Path(filename).suffix.lower()
-    if suffix not in {".xlsx", ".xls"}:
-        raise ValueError("学生名单仅支持 Excel .xlsx 或 .xls 文件")
+    if suffix not in {".xlsx", ".xls", ".csv"}:
+        raise ValueError("学生名单仅支持 Excel .xlsx / .xls 或 CSV .csv 文件")
     data = upload.stream.read(MAX_ROSTER_BYTES + 1)
     upload.stream.seek(0)
     if not data:
@@ -239,9 +270,14 @@ def parse_student_roster(upload, default_password: str = "") -> ParsedStudentRos
         raise ValueError("文件扩展名为 .xlsx，但内容不是有效的 Excel 工作簿")
     if suffix == ".xls" and not data.startswith(bytes.fromhex("D0CF11E0")):
         raise ValueError("文件扩展名为 .xls，但内容不是有效的旧版 Excel 工作簿")
-    sheets = _read_xlsx(data) if suffix == ".xlsx" else _read_xls(data)
+    if suffix == ".csv":
+        sheets = _read_csv(data)
+    elif suffix == ".xlsx":
+        sheets = _read_xlsx(data)
+    else:
+        sheets = _read_xls(data)
     if not sheets:
-        raise ValueError("Excel 中没有可读取的数据工作表")
+        raise ValueError("名单文件中没有可读取的数据工作表")
     mapping = _best_sheet_mapping(sheets)
     rows = []
     duplicates = {}

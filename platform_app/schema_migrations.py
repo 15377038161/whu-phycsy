@@ -23,10 +23,13 @@ def _upgrade_columns(engine: Engine) -> None:
     with engine.begin() as connection:
         if "must_change_password" not in _column_names(inspector, "users"):
             _add_column(connection, "users", f"must_change_password BOOLEAN NOT NULL DEFAULT {bool_default}")
+        if "chaoxing_cxid" not in _column_names(inspector, "users"):
+            _add_column(connection, "users", "chaoxing_cxid VARCHAR(64)")
+        connection.execute(text("CREATE INDEX IF NOT EXISTS ix_users_chaoxing_cxid ON users (chaoxing_cxid)"))
         if "teacher_id" not in _column_names(inspector, "courses"):
             _add_column(connection, "courses", "teacher_id VARCHAR(64) REFERENCES users(id)")
         if "min_experiments_required" not in _column_names(inspector, "courses"):
-            _add_column(connection, "courses", "min_experiments_required INTEGER NOT NULL DEFAULT 3")
+            _add_column(connection, "courses", "min_experiments_required INTEGER NOT NULL DEFAULT 2")
         quiz_columns = _column_names(inspector, "quiz_assignments")
         if "completed_at" not in quiz_columns:
             _add_column(connection, "quiz_assignments", f"completed_at {timestamp_type}")

@@ -43,6 +43,31 @@ def roster_app(tmp_path, monkeypatch):
     })
 
 
+def csv_upload(text: str, filename: str = "学生名单.csv") -> FileStorage:
+    return FileStorage(stream=io.BytesIO(text.encode("utf-8")), filename=filename, content_type="text/csv")
+
+
+def test_parser_reads_csv_with_utf8_bom():
+    upload = csv_upload("\ufeff姓名,学号,班级\n张三,20260001,物理1班\n李四,20260002,物理2班\n")
+    parsed = parse_student_roster(upload, "Student2026")
+    assert parsed.sheet_name == "CSV"
+    assert parsed.student_id_column == "学号"
+    assert parsed.name_column == "姓名"
+    assert [(row.student_id, row.name) for row in parsed.rows] == [("20260001", "张三"), ("20260002", "李四")]
+
+
+def test_parser_rejects_unsupported_extension():
+    upload = FileStorage(stream=io.BytesIO(b"name,id"), filename="名单.txt")
+    with pytest.raises(ValueError, match="仅支持"):
+        parse_student_roster(upload, "Student2026")
+
+
+def test_parser_reads_gbk_csv():
+    upload = FileStorage(stream=io.BytesIO("姓名,学号\n王五,20260003\n赵六,20260004\n".encode("gb18030")), filename="名单.csv")
+    parsed = parse_student_roster(upload, "")
+    assert [(row.student_id, row.name) for row in parsed.rows] == [("20260003", "王五"), ("20260004", "赵六")]
+
+
 def test_parser_finds_shifted_header_and_arbitrary_columns():
     upload = xlsx_upload([
         ("说明", [["学生名单导入说明"], ["本页没有学生数据"]]),

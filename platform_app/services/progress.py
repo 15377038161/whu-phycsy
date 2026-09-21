@@ -203,7 +203,7 @@ def selection_summary(session, course: Course, student_id: str, versions: list[E
     rows = session.scalars(select(StudentExperimentProgress).where(StudentExperimentProgress.course_id == course.id, StudentExperimentProgress.student_id == student_id, StudentExperimentProgress.experiment_version_id.in_([version.id for version in versions]))).all() if versions else []
     by_version = {row.experiment_version_id: row for row in rows}
     selected = [version.id for version in versions if by_version.get(version.id) and by_version[version.id].selected]
-    required = max(1, min(int(course.min_experiments_required or 3), len(versions) or 1))
+    required = max(1, min(int(course.min_experiments_required or 2), len(versions) or 1))
     return {"required": required, "selected": selected, "count": len(selected), "ready": len(selected) >= required, "by_version": by_version}
 
 

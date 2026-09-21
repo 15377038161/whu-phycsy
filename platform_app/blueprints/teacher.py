@@ -14,13 +14,13 @@ from ..db import db_session, transaction
 from ..models import AuditEvent, Course, CourseExperiment, Enrollment, Experiment, ExperimentDraft, ExperimentVersion, FileAsset, QuizAssignment, Review, SubmissionRevision, User
 from auth_service import password_hash
 from ..services.accounts import _validate_new_password, reset_student_password
-from ..services.experiments import copy_experiment, ensure_course_experiments, publish_version
+from ..services.experiments import copy_experiment, ensure_course_experiments, publish_version, published_experiments
 from ..services.files import IMAGE_UPLOADS, REFERENCE_UPLOADS, TEACHING_MATERIAL_UPLOADS, VIDEO_UPLOADS, save_upload
 from ..services.course_materials import extract_teaching_material
 from ..services.reporting import build_docx, build_pdf, report_document
 from ..services.grade_export import build_grade_workbook
 from ..services.student_roster import parse_student_roster
-from ..services.progress import normalize_steps, validate_step_contract
+from ..services.progress import normalize_steps, selection_summary, validate_step_contract
 from ..teacher_analytics import build_teacher_analytics_workbook, get_teacher_analytics
 from .auth import current_user, role_required
 from ai_service import generate_experiment_draft, generate_question_bank
@@ -230,7 +230,7 @@ def students():
                 name = request.form.get("course_name", "").strip()
                 if not name:
                     raise ValueError("班级名称不能为空")
-                required_experiments = max(1, min(5, int(request.form.get("min_experiments_required", "3") or 3)))
+                required_experiments = max(1, min(5, int(request.form.get("min_experiments_required", "2") or 2)))
                 with transaction() as tx:
                     course = Course(id=str(uuid.uuid4()), teacher_id=teacher.id, name=name[:160], min_experiments_required=required_experiments)
                     tx.add(course)
@@ -238,11 +238,25 @@ def students():
                     ensure_course_experiments(tx, course)
                     tx.add(AuditEvent(actor_id=teacher.id, action="course.create", entity_type="course", entity_id=course.id, detail={"source": "manual"}))
                 flash("班级已创建，并已关联当前实验目录。", "success")
+            elif action == "config":
+                course_id = request.form.get("course_id", "").strip()
+                try:
+                    required_experiments = max(1, min(5, int(request.form.get("min_experiments_required", "2") or 2)))
+                except (TypeError, ValueError):
+                    raise ValueError("最低通关实验数必须是 1～5 之间的整数")
+                with transaction() as tx:
+                    course = tx.scalar(select(Course).where(Course.id == course_id, Course.teacher_id == teacher.id))
+                    if not course:
+                        raise ValueError("班级不存在或不属于当前教师")
+                    previous = course.min_experiments_required
+                    course.min_experiments_required = required_experiments
+                    tx.add(AuditEvent(actor_id=teacher.id, action="course.configure", entity_type="course", entity_id=course_id, detail={"previous": previous, "min_experiments_required": required_experiments}))
+                flash(f"班级最低通关实验数已更新为 {required_experiments}，学生端选关校验将立即生效。", "success")
             elif action == "students":
                 course_id = request.form.get("course_id", "")
                 upload = request.files.get("student_roster")
                 if not upload or not upload.filename:
-                    raise ValueError("请选择 Excel 学生名单")
+                    raise ValueError("请选择 Excel 或 CSV 学生名单")
                 roster = parse_student_roster(upload, request.form.get("default_password", ""))
                 with transaction() as tx:
                     course = tx.scalar(select(Course).where(Course.id == course_id, Course.teacher_id == teacher.id))
@@ -310,7 +324,19 @@ def students():
     selected_id = (analytics.get("course") or {}).get("id")
     selected_rows = [row for row in rows if row[2].id == selected_id]
     account_ready = sum(not student.must_change_password for _, student, _ in selected_rows)
-    return render_template("teacher_students.html", user=teacher, courses=courses, rows=rows, course_counts=course_counts, progress=progress, analytics=analytics, selected_course=analytics.get("course"), experiment_total=analytics["summary"]["task_count"] // 2, account_ready=account_ready)
+    # 班级整体情况：统计每个学生的实验选择数量与达标状态（依托班级最低通关数配置）
+    selection = {}
+    selected_course_obj = db_session().get(Course, selected_id) if selected_id else None
+    if selected_course_obj:
+        versions = [version for _, version in published_experiments(db_session(), selected_course_obj.id)]
+        for _, student, _ in selected_rows:
+            summary = selection_summary(db_session(), selected_course_obj, student.id, versions)
+            selection[student.id] = {
+                "required": summary["required"],
+                "count": summary["count"],
+                "ready": summary["ready"],
+            }
+    return render_template("teacher_students.html", user=teacher, courses=courses, rows=rows, course_counts=course_counts, progress=progress, analytics=analytics, selected_course=analytics.get("course"), experiment_total=analytics["summary"]["task_count"] // 2, account_ready=account_ready, selection=selection)
 
 
 @bp.post("/experiments/ai-draft")

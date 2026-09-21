@@ -8,7 +8,7 @@ from functools import wraps
 
 import httpx
 from flask import Blueprint, current_app, flash, redirect, render_template, request, send_file, session, url_for
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from werkzeug.security import check_password_hash
 
 from ..db import db_session, transaction
@@ -202,6 +202,57 @@ def _detect_chaoxing_role(metadata: dict, claims: dict) -> str:
     return "student"
 
 
+# 学生身份自动匹配：超星元数据中提取学号（字段命名不稳定，做多字段兼容）。
+_STUDENT_NO_KEYS = (
+    "student_no", "studentno", "sno", "student_id", "studentid", "userno",
+    "user_no", "job_number", "jobnumber", "xh", "number", "code", "学号",
+)
+
+
+def _extract_student_no(metadata: dict, claims: dict) -> str:
+    merged = {**claims, **metadata}
+    for key in _STUDENT_NO_KEYS:
+        value = str(merged.get(key) or "").strip()
+        if value:
+            return value[:64]
+    return ""
+
+
+def _match_roster_student(session, student_no: str, realname: str):
+    """在学生名单账号中匹配超星身份：优先学号精确匹配，其次姓名唯一匹配。
+
+    名单账号由教师导入创建（username 为学号、非 cx_ 前缀），这里只在这些账号中
+    匹配，避免与超星自动创建的 cx_ 账号混淆。返回唯一匹配的 User 或 None。
+    """
+    if not student_no and not realname:
+        return None
+    # 学号精确匹配：id 或 username 均可能为学号
+    if student_no:
+        matched = session.scalar(
+            select(User).where(
+                User.role == "student",
+                User.active.is_(True),
+                or_(User.id == student_no, User.username == student_no),
+            )
+        )
+        if matched is not None:
+            return matched
+    if not realname:
+        return None
+    # 姓名唯一匹配：仅限教师导入的名单账号（username 非 cx_ 前缀）
+    candidates = session.scalars(
+        select(User).where(
+            User.role == "student",
+            User.active.is_(True),
+            User.name == realname,
+            ~User.username.like("cx_%"),
+        )
+    ).all()
+    if len(candidates) == 1:
+        return candidates[0]
+    return None
+
+
 @bp.get("/auth/chaoxing")
 def chaoxing_login():
     """发起超星一键登录：换取授权地址并顶层跳转。"""
@@ -273,10 +324,22 @@ def chaoxing_callback():
     # 教师身份自动识别：从超星元数据判定角色（教师类身份 / 单位号 1385 → teacher）
     detected_role = _detect_chaoxing_role(metadata, claims)
 
+    # 学生身份自动匹配：优先用超星元数据中的学号/姓名匹配教师已导入的名单账号，
+    # 命中后复用名单账号（学号为 id/username），从而自动完成班级绑定，避免为同一
+    # 学生重复创建 cx_ 账号导致名单与超星账号割裂。
+    student_no = _extract_student_no(metadata, claims)
+
     # 映射本地用户：按超星 cxid 作为用户名查找，不存在则按识别到的角色创建账号
     username = f"cx_{cxid}"
     with transaction() as db:
         user = db.scalar(select(User).where(User.username == username))
+        if user is None and detected_role == "student":
+            matched = _match_roster_student(db, student_no, realname)
+            if matched is not None:
+                user = matched
+                # 建立超星绑定关系，后续可直接凭 cxid 定位该名单账号
+                if user.chaoxing_cxid != cxid:
+                    user.chaoxing_cxid = cxid
         if user is None:
             user = User(
                 id=f"cx_{cxid}"[:64],
@@ -286,6 +349,7 @@ def chaoxing_callback():
                 password_hash="!chaoxing-oauth-no-password!",
                 active=True,
                 must_change_password=False,
+                chaoxing_cxid=cxid,
             )
             db.add(user)
         elif not user.active:
@@ -294,6 +358,8 @@ def chaoxing_callback():
         else:
             if realname and user.name != realname:
                 user.name = realname
+            if not user.chaoxing_cxid:
+                user.chaoxing_cxid = cxid
             # 存量账号若此前被识别为学生、而超星元数据已确认为教师，自动升级角色
             if user.role == "student" and detected_role == "teacher":
                 user.role = "teacher"
