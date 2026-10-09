@@ -110,6 +110,50 @@ $ python3 -m pytest tests/test_chaoxing_callback.py tests/test_chaoxing_token_se
 
 ---
 
+## Round 3：修复公开部署后重定向 Location 被网关重写为沙箱前缀
+
+### 目标
+
+- 解决 `fbada33` 部署后，超星登录成功但浏览器地址仍为 `https://app-a398.../sandboxes/<id>/proxy/8080/student/home` 的问题。
+- 用真实请求定位根因，不凭模拟测试断言修复成功。
+
+### 真实证据
+
+- `GET /auth/chaoxing/callback?code=invalid` 实际响应：
+  - `location: /sandboxes/7ea65307-1b49-4bf4-bc59-742e79d7207e/proxy/8080/login?_sid=...`
+- `GET /auth/chaoxing` 实际响应：
+  - `location: https://auth.chaoxing.com/connect/oauth2/authorize?...redirect_uri=https%3A%2F%2Fapp-a398jfvyx9l6.cxiagents.com%2Fauth%2Fchaoxing%2Fcallback...`
+- 根因判定：应用返回的根相对 `Location: /login` / `/student/home` 被平台网关重写为沙箱前缀；外部绝对 URL 未被重写。因此改为返回同源绝对 URL。
+
+### 修改文件
+
+| 文件 | 改动摘要 |
+|------|----------|
+| `platform_app/blueprints/auth.py` | 新增 `_public_redirect(endpoint)`：所有内部重定向生成 `https://APP_PUBLIC_BASE_URL/...` 同源绝对 URL；外站 OAuth 跳转仍使用普通 `redirect()` |
+| `platform_app/__init__.py` | `propagate_sid` 改为用 `urlsplit` 严格校验 scheme/hostname/port，仅对根相对或同源绝对 URL 附加 `_sid`；拒绝 userinfo、外站、同名前缀恶意域名 |
+| `tests/test_chaoxing_token_session.py` | 新增/更新 3 个测试：同源绝对附加 `_sid`、外站不附加、恶意域名不附加；所有 callback 测试断言 Location 为绝对 URL |
+| `docs/DELIVERY_ACCEPTANCE.md` | 本文件 |
+
+### 测试结果
+
+```text
+$ python3 -m pytest tests/test_chaoxing_callback.py tests/test_chaoxing_token_session.py -v
+============================== 18 passed in 6.18s ==============================
+```
+
+### 未修复（记录，后续轮次处理）
+
+- 部署前学生 QKD/NV 选关保存成功，部署后重登选关变 0：确认 SQLite 数据跨部署丢失；后续必须迁移到原生数据库持久化。
+- AI 在 QKD 页问公开原理返回“服务不可用”，否定句被误拦截：AI 服务与提示词策略需后续修复。
+
+### 部署状态
+
+- 本 Agent 无原生部署命令。
+- 已准备可部署 commit，提交 hash 见下一条交付记录。
+- 部署后真实复测：确认登录后地址栏为 `https://app-a398jfvyx9l6.cxiagents.com/student/home`。
+
+---
+
 ## 历史修复（已包含在当前工作区，待随本轮 commit 一起进入部署）
 
 | 修复 | 证据 |

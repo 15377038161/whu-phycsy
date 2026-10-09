@@ -126,6 +126,25 @@ def create_app(test_config: dict | None = None) -> Flask:
     def inject_csrf_token():
         return {"csrf_token": csrf_token, "_sid": current_sid()}
 
+    def _default_port(scheme: str) -> int | None:
+        return 443 if scheme == "https" else 80 if scheme == "http" else None
+
+    def _is_app_origin(location: str, public_base: str) -> bool:
+        """严格校验 location 与 public_base 同源（scheme/hostname/port），拒绝 userinfo/外站/协议相对 URL。"""
+        parsed = urlsplit(location)
+        if parsed.username is not None or parsed.password is not None:
+            return False
+        if not parsed.scheme or not parsed.netloc:
+            return False
+        base = urlsplit(public_base)
+        if parsed.scheme != base.scheme:
+            return False
+        if (parsed.hostname or "").casefold() != (base.hostname or "").casefold():
+            return False
+        if (parsed.port or _default_port(parsed.scheme)) != (base.port or _default_port(base.scheme)):
+            return False
+        return True
+
     @app.after_request
     def propagate_sid(response):
         """Keep the session ticket alive across redirects and page URLs.
@@ -133,13 +152,23 @@ def create_app(test_config: dict | None = None) -> Flask:
         The proxy strips cookies, so the _sid ticket must travel in the URL.
         Redirects get the ticket appended to Location; page propagation for
         links/forms is handled client-side by static/sid.js.
+
+        安全：仅对根相对 URL 或与 APP_PUBLIC_BASE_URL 同源的绝对 URL 附加 _sid；
+        外站 OAuth 等绝对跳转不附加，防止票据泄露。
         """
         sid = current_sid()
-        if sid and response.status_code in {301, 302, 303, 307, 308}:
-            location = response.headers.get("Location", "")
-            if location.startswith("/") and "_sid=" not in location:
-                sep = "&" if "?" in location else "?"
-                response.headers["Location"] = f"{location}{sep}_sid={sid}"
+        if not sid or response.status_code not in {301, 302, 303, 307, 308}:
+            return response
+        location = response.headers.get("Location", "")
+        if not location or location.startswith("//") or "_sid=" in location:
+            return response
+        from .blueprints.auth import _app_public_base
+
+        public_base = _app_public_base()
+        root_relative = location.startswith("/")
+        if root_relative or _is_app_origin(location, public_base):
+            sep = "&" if "?" in location else "?"
+            response.headers["Location"] = f"{location}{sep}_sid={sid}"
         return response
 
     @app.before_request

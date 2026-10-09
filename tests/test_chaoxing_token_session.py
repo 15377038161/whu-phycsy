@@ -35,6 +35,13 @@ def supabase_env(monkeypatch):
     monkeypatch.setenv("CODER_SUPABASE_TENANT_ID", "fake-tenant-id")
 
 
+@pytest.fixture(autouse=True)
+def public_base_env(monkeypatch):
+    """测试用公开域名，避免沙箱环境变量触发 fail closed。"""
+    monkeypatch.setenv("APP_PUBLIC_BASE_URL", "https://app.example.edu.cn")
+    monkeypatch.delenv("CODER_PROJECTS_DOMAIN", raising=False)
+
+
 def _make_verified_user(cxid: str = "123456789", realname: str = "测试用户"):
     return {
         "id": "00000000-0000-0000-0000-000000000000",
@@ -163,7 +170,10 @@ def test_callback_stores_tokens_server_side_only(app_for_token, supabase_env, mo
 
     assert resp.status_code == 302
     location = resp.headers.get("Location", "")
+    # 必须为同源绝对 URL（避免网关把根相对 Location 重写为沙箱前缀）
+    assert location.startswith("https://app.example.edu.cn/")
     assert "/student/home" in location or "/teacher/dashboard" in location
+    assert "_sid=" in location
     assert "tok-access-abc" not in location
     assert "tok-refresh-xyz" not in location
     assert b"tok-access-abc" not in resp.data
@@ -206,7 +216,9 @@ def test_callback_rejects_unverified_token(app_for_token, supabase_env, monkeypa
         resp = client.get("/auth/chaoxing/callback?code=fake-code", follow_redirects=False)
 
     assert resp.status_code == 302
-    assert "/login" in resp.headers.get("Location", "")
+    location = resp.headers.get("Location", "")
+    assert location.startswith("https://app.example.edu.cn/")
+    assert "/login" in location
 
     with app_for_token.app_context():
         count = db_session().query(AppSession).count()
@@ -258,3 +270,57 @@ def test_logout_clears_tokens(app_for_token, supabase_env, monkeypatch):
             row = db_session().get(AppSession, sid_value)
             assert row is None or row.data.get("user_id") is None
             assert row is None or row.data.get("cx_access_token") is None
+
+
+def test_propagate_sid_appends_to_same_origin_absolute(app_for_token):
+    """同源绝对重定向（登录失败回调）应附加 _sid。"""
+    with app_for_token.test_client() as client:
+        # callback 失败会重定向到 /login，使用 _public_redirect 生成绝对 URL
+        resp = client.get("/auth/chaoxing/callback?code=invalid", follow_redirects=False)
+    assert resp.status_code == 302
+    location = resp.headers.get("Location", "")
+    assert location.startswith("https://app.example.edu.cn/")
+    assert "/login" in location
+    assert "_sid=" in location
+
+
+def test_propagate_sid_does_not_append_to_external_location(app_for_token):
+    """外站 OAuth 等绝对跳转不得附加 _sid。"""
+    from flask import Blueprint, redirect
+
+    test_bp = Blueprint("test_external", __name__)
+
+    @test_bp.get("/external-redirect")
+    def _external_redirect():
+        return redirect("https://auth.example.com/oauth?appid=123")
+
+    app_for_token.register_blueprint(test_bp)
+
+    with app_for_token.test_client() as client:
+        client.get("/login")
+        resp = client.get("/external-redirect", follow_redirects=False)
+    assert resp.status_code == 302
+    location = resp.headers.get("Location", "")
+    assert location == "https://auth.example.com/oauth?appid=123"
+    assert "_sid=" not in location
+
+
+def test_propagate_sid_rejects_malicious_absolute(app_for_token):
+    """拒绝为同名前缀/端口不同的恶意域名附加 _sid。"""
+    from flask import Blueprint, redirect
+
+    test_bp = Blueprint("test_malicious", __name__)
+
+    @test_bp.get("/malicious-redirect")
+    def _malicious_redirect():
+        return redirect("https://app.example.edu.cn.evil.com/student/home")
+
+    app_for_token.register_blueprint(test_bp)
+
+    with app_for_token.test_client() as client:
+        client.get("/login")
+        resp = client.get("/malicious-redirect", follow_redirects=False)
+    assert resp.status_code == 302
+    location = resp.headers.get("Location", "")
+    assert location == "https://app.example.edu.cn.evil.com/student/home"
+    assert "_sid=" not in location

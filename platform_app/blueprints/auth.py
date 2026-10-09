@@ -25,6 +25,13 @@ INLINE_MEDIA_TYPES = {
 }
 
 
+def _public_redirect(endpoint: str, **values):
+    """生成同源绝对 URL 重定向，避免平台网关把根相对 Location 重写为沙箱前缀。
+
+    仅用于应用内部路由；外站跳转必须直接使用 redirect(authorize_url) 等。"""
+    return redirect(f"{_app_public_base()}{url_for(endpoint, **values)}")
+
+
 def _login_key(username: str) -> tuple[str, str]:
     return username.casefold(), request.remote_addr or "unknown"
 
@@ -75,9 +82,9 @@ def role_required(role):
         def wrapped(*args, **kwargs):
             user = current_user()
             if not user or user.role != role:
-                return redirect(url_for("auth.login"))
+                return _public_redirect("auth.login")
             if user.must_change_password and request.endpoint != "auth.first_password":
-                return redirect(url_for("auth.first_password"))
+                return _public_redirect("auth.first_password")
             return fn(*args, **kwargs)
         return wrapped
     return decorator
@@ -92,7 +99,7 @@ def index():
     """
     user = current_user()
     if user:
-        return redirect(url_for("teacher.dashboard" if user.role == "teacher" else "student.home"))
+        return _public_redirect("teacher.dashboard" if user.role == "teacher" else "student.home")
     return render_template("login.html")
 
 
@@ -112,8 +119,8 @@ def login():
             session.clear()
             session["user_id"] = user.id
             if user.must_change_password:
-                return redirect(url_for("auth.first_password"))
-            return redirect(url_for("teacher.dashboard" if user.role == "teacher" else "student.home"))
+                return _public_redirect("auth.first_password")
+            return _public_redirect("teacher.dashboard" if user.role == "teacher" else "student.home")
         attempts = _record_login_failure(key)
         _audit_login("login.fail", username, user, attempts)
         flash("账号或密码错误。", "error")
@@ -123,7 +130,7 @@ def login():
 @bp.post("/logout")
 def logout():
     session.clear()
-    return redirect(url_for("auth.login"))
+    return _public_redirect("auth.login")
 
 
 # ── 超星学习通 OAuth2.0 单点登录（服务端编排）────────────────────
@@ -418,15 +425,15 @@ def chaoxing_login():
     except httpx.HTTPError as exc:
         current_app.logger.warning("chaoxing authorize-url request failed: %s", exc)
         flash("超星登录服务暂时不可用，请稍后再试或使用账号密码登录。", "error")
-        return redirect(url_for("auth.login"))
+        return _public_redirect("auth.login")
     if resp.status_code != 200:
         current_app.logger.warning("chaoxing authorize-url -> %s", resp.status_code)
         flash("超星登录服务暂时不可用，请稍后再试或使用账号密码登录。", "error")
-        return redirect(url_for("auth.login"))
+        return _public_redirect("auth.login")
     authorize_url = (resp.json() or {}).get("authorizeUrl")
     if not authorize_url:
         flash("超星登录服务返回异常，请稍后再试。", "error")
-        return redirect(url_for("auth.login"))
+        return _public_redirect("auth.login")
     return redirect(authorize_url)
 
 
@@ -436,7 +443,7 @@ def chaoxing_callback():
     code = request.args.get("code", "").strip()
     if not code:
         flash("超星授权已取消或已过期，请重新登录。", "error")
-        return redirect(url_for("auth.login"))
+        return _public_redirect("auth.login")
 
     base = _chaoxing_auth_base()
     try:
@@ -449,11 +456,11 @@ def chaoxing_callback():
     except httpx.HTTPError as exc:
         current_app.logger.warning("chaoxing exchange request failed: %s", exc)
         flash("超星登录服务暂时不可用，请稍后再试。", "error")
-        return redirect(url_for("auth.login"))
+        return _public_redirect("auth.login")
     if resp.status_code != 200:
         current_app.logger.warning("chaoxing exchange -> %s", resp.status_code)
         flash("登录链接已失效，请重新登录。", "error")
-        return redirect(url_for("auth.login"))
+        return _public_redirect("auth.login")
 
     payload = resp.json() or {}
     access_token = payload.get("access_token", "")
@@ -461,14 +468,14 @@ def chaoxing_callback():
     if not access_token:
         current_app.logger.warning("chaoxing exchange: no access_token in session response")
         flash("登录服务返回异常，请重新登录。", "error")
-        return redirect(url_for("auth.login"))
+        return _public_redirect("auth.login")
 
     # 用 Supabase Auth 端点校验 access_token，不以未验签 decode 作为身份依据。
     verified_user, verify_error = _verify_access_token(access_token)
     if verify_error:
         current_app.logger.warning("chaoxing access_token verification failed: %s", verify_error)
         flash("身份信息校验失败，请重新登录。", "error")
-        return redirect(url_for("auth.login"))
+        return _public_redirect("auth.login")
 
     metadata = verified_user.get("user_metadata") or {}
     cxid = str(metadata.get("cxid") or verified_user.get("id") or "").strip()
@@ -476,7 +483,7 @@ def chaoxing_callback():
     if not cxid:
         current_app.logger.warning("chaoxing exchange: no cxid in verified user metadata")
         flash("未能获取超星身份信息，请联系管理员。", "error")
-        return redirect(url_for("auth.login"))
+        return _public_redirect("auth.login")
 
     # 教师身份自动识别：从超星元数据判定角色（教师类身份 / 单位号 1385 → teacher）
     detected_role = _detect_chaoxing_role(metadata, verified_user)
@@ -517,7 +524,7 @@ def chaoxing_callback():
             db.add(user)
         elif not user.active:
             flash("账号已被停用，请联系管理员。", "error")
-            return redirect(url_for("auth.login"))
+            return _public_redirect("auth.login")
         else:
             if realname and user.name != realname:
                 user.name = realname
@@ -550,31 +557,31 @@ def chaoxing_callback():
     session["cx_access_token"] = access_token
     session["cx_refresh_token"] = refresh_token
     session.modified = True
-    return redirect(url_for("teacher.dashboard" if user.role == "teacher" else "student.home"))
+    return _public_redirect("teacher.dashboard" if user.role == "teacher" else "student.home")
 
 
 @bp.post("/account/password")
 def account_password():
     user = current_user()
     if not user:
-        return redirect(url_for("auth.login"))
+        return _public_redirect("auth.login")
     try:
         change_password(user.id, request.form.get("current_password", ""), request.form.get("new_password", ""), request.form.get("confirm_password", ""))
         session.clear()
         flash("密码已更新，请使用新密码继续登录。", "success")
-        return redirect(url_for("auth.login"))
+        return _public_redirect("auth.login")
     except ValueError as exc:
         flash(str(exc), "error")
-        return redirect(url_for("teacher.dashboard" if user.role == "teacher" else "student.home"))
+        return _public_redirect("teacher.dashboard" if user.role == "teacher" else "student.home")
 
 
 @bp.route("/account/first-password", methods=["GET", "POST"])
 def first_password():
     user = current_user()
     if not user:
-        return redirect(url_for("auth.login"))
+        return _public_redirect("auth.login")
     if not user.must_change_password:
-        return redirect(url_for("teacher.dashboard" if user.role == "teacher" else "student.home"))
+        return _public_redirect("teacher.dashboard" if user.role == "teacher" else "student.home")
     if request.method == "POST":
         try:
             change_password(
@@ -584,7 +591,7 @@ def first_password():
                 request.form.get("confirm_password", ""),
             )
             flash("新密码设置成功，欢迎进入实验平台。", "success")
-            return redirect(url_for("student.home"))
+            return _public_redirect("student.home")
         except ValueError as exc:
             flash(str(exc), "error")
     return render_template("first_password.html", user=user)
@@ -593,7 +600,7 @@ def first_password():
 @bp.get("/media/<sha256>")
 def media(sha256):
     if not current_user():
-        return redirect(url_for("auth.login"))
+        return _public_redirect("auth.login")
     asset = db_session().get(FileAsset, sha256)
     if not asset or not (asset.content_type.startswith(("video/", "image/")) or asset.content_type in {"application/pdf", "application/vnd.ms-powerpoint", "application/vnd.openxmlformats-officedocument.presentationml.presentation"}):
         return "媒体文件不存在", 404

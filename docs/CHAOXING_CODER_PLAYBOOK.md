@@ -29,6 +29,8 @@
 - `_sid` 本身不是 JWT，只是指向 `app_sessions` 表行的随机 id。
 - `TicketSessionInterface` 把 session 数据（包括超星 access/refresh token）存在服务端 SQLite，浏览器只持有 `_sid`。
 - 平台公开/预览代理可能把沙箱路由前缀写入 WSGI `SCRIPT_NAME`；`_SandboxProxyPrefixStripper` 会同时清空 `SCRIPT_NAME` 与 `PATH_INFO` 中的 `/sandboxes/<id>/proxy/<port>`，确保 `url_for()` 生成的重定向与页面链接保持根路径。
+- 为避免平台网关把根相对 `Location` 重写为沙箱前缀，应用内部重定向使用 `_public_redirect()` 生成同源绝对 URL（`https://APP_PUBLIC_BASE_URL/...`）。
+- `propagate_sid` 仅对根相对 URL 或与 `APP_PUBLIC_BASE_URL` 同源的绝对 URL 附加 `_sid`；用 `urlsplit` 校验 scheme/hostname/port，拒绝 userinfo、外站、同名前缀恶意域名。外站 OAuth 跳转不附加 `_sid`。
 
 ## 2. 认证与权限边界
 
