@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import base64
 import json
 import os
 import time
@@ -180,17 +179,68 @@ def _chaoxing_project_id() -> str:
     return os.getenv("CODER_PROJECTS_ID") or os.getenv("NEXT_PUBLIC_CODER_PROJECTS_ID") or ""
 
 
-def _decode_jwt_payload(token: str) -> dict:
-    """解析 JWT payload（仅读取声明，签名校验已由签发方服务端完成）。"""
+def _supabase_env() -> tuple[str, str, str] | None:
+    """返回内置 Supabase Data API 环境变量三元组 (url, anon_key, tenant_id)。
+
+    未配置时返回 None，此时无法通过 Supabase Auth 端点校验 access_token
+    或调用 Data API。严禁在任何地方输出 anon_key。"""
+    url = os.getenv("CODER_SUPABASE_URL", "").strip()
+    anon_key = os.getenv("CODER_SUPABASE_ANON_KEY", "").strip()
+    tenant_id = os.getenv("CODER_SUPABASE_TENANT_ID", "").strip()
+    if not url or not anon_key or not tenant_id:
+        return None
+    return url.rstrip("/"), anon_key, tenant_id
+
+
+def _verify_access_token(access_token: str) -> tuple[dict | None, str | None]:
+    """通过 Supabase Auth /auth/v1/user 端点校验 access_token，返回可信用户对象。
+
+    这是平台认可的用户校验方式：verify-session.md 中 createSupabaseServer(token)
+    .auth.getUser() 的 REST 等价实现。不本地 decode JWT，不输出令牌内容到日志。
+    """
+    env = _supabase_env()
+    if env is None:
+        return None, "Supabase 环境变量不完整，无法校验令牌"
+    url, anon_key, tenant_id = env
     try:
-        parts = token.split(".")
-        if len(parts) < 2:
-            return {}
-        payload = parts[1]
-        payload += "=" * (-len(payload) % 4)
-        return json.loads(base64.urlsafe_b64decode(payload.encode()))
-    except Exception:
-        return {}
+        resp = httpx.get(
+            f"{url}/auth/v1/user",
+            headers={
+                "Authorization": f"Bearer {access_token}",
+                "apikey": anon_key,
+                "X-Instance-ID": tenant_id,
+            },
+            timeout=_CHAOXING_TIMEOUT,
+        )
+    except httpx.HTTPError as exc:
+        return None, f"Supabase Auth 校验请求失败: {exc}"
+    if resp.status_code != 200:
+        return None, f"Supabase Auth 校验失败 ({resp.status_code})"
+    return resp.json(), None
+
+
+def _refresh_access_token(refresh_token: str) -> tuple[dict | None, str | None]:
+    """用 refresh_token 换取新的 Supabase session（access_token/refresh_token）。"""
+    env = _supabase_env()
+    if env is None:
+        return None, "Supabase 环境变量不完整，无法刷新令牌"
+    url, anon_key, tenant_id = env
+    try:
+        resp = httpx.post(
+            f"{url}/auth/v1/token?grant_type=refresh_token",
+            json={"refresh_token": refresh_token},
+            headers={
+                "apikey": anon_key,
+                "X-Instance-ID": tenant_id,
+                "Content-Type": "application/json",
+            },
+            timeout=_CHAOXING_TIMEOUT,
+        )
+    except httpx.HTTPError as exc:
+        return None, f"令牌刷新请求失败: {exc}"
+    if resp.status_code != 200:
+        return None, f"令牌刷新失败 ({resp.status_code})"
+    return resp.json(), None
 
 
 # 教师身份自动识别：从超星用户元数据中提取「身份类型 / 单位号」判定角色。
@@ -390,28 +440,41 @@ def chaoxing_callback():
         return redirect(url_for("auth.login"))
 
     payload = resp.json() or {}
-    claims = _decode_jwt_payload(payload.get("access_token", ""))
-    metadata = claims.get("user_metadata") or {}
-    cxid = str(metadata.get("cxid") or claims.get("sub") or "").strip()
+    access_token = payload.get("access_token", "")
+    refresh_token = payload.get("refresh_token", "")
+    if not access_token:
+        current_app.logger.warning("chaoxing exchange: no access_token in session response")
+        flash("登录服务返回异常，请重新登录。", "error")
+        return redirect(url_for("auth.login"))
+
+    # 用 Supabase Auth 端点校验 access_token，不以未验签 decode 作为身份依据。
+    verified_user, verify_error = _verify_access_token(access_token)
+    if verify_error:
+        current_app.logger.warning("chaoxing access_token verification failed: %s", verify_error)
+        flash("身份信息校验失败，请重新登录。", "error")
+        return redirect(url_for("auth.login"))
+
+    metadata = verified_user.get("user_metadata") or {}
+    cxid = str(metadata.get("cxid") or verified_user.get("id") or "").strip()
     realname = str(metadata.get("realname") or metadata.get("name") or "").strip()
     if not cxid:
-        current_app.logger.warning("chaoxing exchange: no cxid in token claims")
+        current_app.logger.warning("chaoxing exchange: no cxid in verified user metadata")
         flash("未能获取超星身份信息，请联系管理员。", "error")
         return redirect(url_for("auth.login"))
 
     # 教师身份自动识别：从超星元数据判定角色（教师类身份 / 单位号 1385 → teacher）
-    detected_role = _detect_chaoxing_role(metadata, claims)
+    detected_role = _detect_chaoxing_role(metadata, verified_user)
     current_app.logger.info(
         "chaoxing identity: detected_role=%s cxid=%s fields=%s",
         detected_role,
         _mask_value(cxid),
-        _identity_diagnostic(metadata, claims),
+        _identity_diagnostic(metadata, verified_user),
     )
 
     # 学生身份自动匹配：优先用超星元数据中的学号/姓名匹配教师已导入的名单账号，
     # 命中后复用名单账号（学号为 id/username），从而自动完成班级绑定，避免为同一
     # 学生重复创建 cx_ 账号导致名单与超星账号割裂。
-    student_no = _extract_student_no(metadata, claims)
+    student_no = _extract_student_no(metadata, verified_user)
 
     # 映射本地用户：按超星 cxid 作为用户名查找，不存在则按识别到的角色创建账号
     username = f"cx_{cxid}"
@@ -466,6 +529,10 @@ def chaoxing_callback():
     session.clear()
     session["user_id"] = user.id
     session["chaoxing_cxid"] = cxid
+    # access_token / refresh_token 只保存在服务端 app_sessions 表，
+    # 不进入 URL 的 _sid、不写入浏览器可读 cookie、不输出到日志。
+    session["cx_access_token"] = access_token
+    session["cx_refresh_token"] = refresh_token
     session.modified = True
     return redirect(url_for("teacher.dashboard" if user.role == "teacher" else "student.home"))
 
