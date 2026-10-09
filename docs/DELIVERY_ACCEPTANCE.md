@@ -61,6 +61,55 @@ $ python3 -m pytest tests/test_chaoxing_token_session.py tests/test_chaoxing_cal
 
 ---
 
+## Round 2：修正公开部署后 URL 中泄露沙箱代理前缀
+
+### 目标
+
+- 修复 f7fbcc9 部署后公开站登录成功，但浏览器地址出现 `/sandboxes/<id>/proxy/8080/student/home` 的问题。
+- 让 `url_for()` 生成的重定向与页面导航保持根路径 `/student/*`、`/teacher/*`。
+- 公开地址配置缺失或非法时 fail closed，不把沙箱/内部地址当作公开回跳地址。
+
+### 根因
+
+平台公开部署代理把沙箱路由前缀同时写入了 WSGI `SCRIPT_NAME`。`_SandboxProxyPrefixStripper` 之前只剥离 `PATH_INFO`，未清空 `SCRIPT_NAME`，导致 Flask `url_for()` 与 redirect `Location` 把沙箱前缀输出到浏览器地址栏。
+
+### 修改文件
+
+| 文件 | 改动摘要 |
+|------|----------|
+| `platform_app/__init__.py` | `_SandboxProxyPrefixStripper` 同时清空匹配的 `SCRIPT_NAME`；更新注释 |
+| `platform_app/blueprints/auth.py` | `_app_public_base` 增加 `_is_trusted_public_domain`；对沙箱/内部/本地地址 fail closed |
+| `tests/test_chaoxing_callback.py` | 新增 3 个回归测试：沙箱域名回退失败、非法 APP_PUBLIC_BASE_URL 失败、SCRIPT_NAME 被清空 |
+| `docs/CHAOXING_CODER_PLAYBOOK.md` | 补充代理前缀剥离说明与 fail closed 规则 |
+| `docs/DELIVERY_ACCEPTANCE.md` | 本文件 |
+
+### 测试结果
+
+```text
+$ python3 -m pytest tests/test_chaoxing_callback.py tests/test_chaoxing_token_session.py -v
+============================== 15 passed in 4.83s ==============================
+```
+
+新增关键测试：
+- `test_proxy_prefix_stripper_also_clears_script_name`：模拟平台把 `SCRIPT_NAME` 设成 `/sandboxes/<id>/proxy/8080`，确认 stripper 清空后 `PATH_INFO` 仍为 `/student/home`。
+- `test_public_base_fail_closed_on_sandbox_domain`：未配置 `APP_PUBLIC_BASE_URL` 且 `CODER_PROJECTS_DOMAIN` 为沙箱地址时直接抛异常。
+- `test_public_base_fail_closed_on_invalid_app_public_base`：`APP_PUBLIC_BASE_URL` 被配成沙箱地址时直接抛异常。
+
+### 真实环境检查
+
+| 检查项 | 结果 |
+|--------|------|
+| f7fbcc9 面板部署 | 用户确认 18:38:26 成功 |
+| 公开站超星一键登录 | 成功进入 student/home |
+| 当前问题 | URL 携带 `/sandboxes/<id>/proxy/8080/` 前缀；修复后需重新部署验证 |
+| 代码中 `next` 参数来源 | 未找到；当前重定向不依赖 `next` 查询参数 |
+
+### 未验证项
+
+- 修复后的公开部署端到端验证：需重新部署当前 commit 后，确认地址栏为 `https://app-a398jfvyx9l6.cxiagents.com/student/home`。
+
+---
+
 ## 历史修复（已包含在当前工作区，待随本轮 commit 一起进入部署）
 
 | 修复 | 证据 |

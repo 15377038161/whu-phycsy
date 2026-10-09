@@ -17,9 +17,10 @@
 
 - 超星 OAuth 回跳地址（`redirect_uri`）必须指向浏览器可访问的公开域名。
 - 配置优先级（代码见 `platform_app/blueprints/auth.py::_app_public_base`）：
-  1. `APP_PUBLIC_BASE_URL`
-  2. `CODER_PROJECTS_DOMAIN`
+  1. `APP_PUBLIC_BASE_URL`（显式公开域名，公开部署必填）
+  2. `CODER_PROJECTS_DOMAIN`（平台注入域名，拒绝沙箱/内部地址）
   3. `request.url_root`（仅本地兜底）
+- fail closed：`APP_PUBLIC_BASE_URL` 或 `CODER_PROJECTS_DOMAIN` 为沙箱、`internal`、`localhost`、带端口地址时直接抛异常，避免把沙箱地址作为公开回跳。
 - 当前 `.env.preview` 已设置：`APP_PUBLIC_BASE_URL=https://app-a398jfvyx9l6.cxiagents.com`。
 
 ### 1.3 会话机制
@@ -27,6 +28,7 @@
 - 平台代理会剥离 `Set-Cookie` 与 `Cookie`，因此使用 URL 票据 `_sid`。
 - `_sid` 本身不是 JWT，只是指向 `app_sessions` 表行的随机 id。
 - `TicketSessionInterface` 把 session 数据（包括超星 access/refresh token）存在服务端 SQLite，浏览器只持有 `_sid`。
+- 平台公开/预览代理可能把沙箱路由前缀写入 WSGI `SCRIPT_NAME`；`_SandboxProxyPrefixStripper` 会同时清空 `SCRIPT_NAME` 与 `PATH_INFO` 中的 `/sandboxes/<id>/proxy/<port>`，确保 `url_for()` 生成的重定向与页面链接保持根路径。
 
 ## 2. 认证与权限边界
 

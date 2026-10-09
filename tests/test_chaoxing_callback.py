@@ -83,3 +83,39 @@ def test_public_base_strips_trailing_slash(app_for_callback, monkeypatch):
     _public_base(monkeypatch, public="https://app-a398jfvyx9l6.cxiagents.com/")
     with app_for_callback.test_request_context("/auth/chaoxing"):
         assert _app_public_base() == "https://app-a398jfvyx9l6.cxiagents.com"
+
+
+def test_public_base_fail_closed_on_sandbox_domain(app_for_callback, monkeypatch):
+    """未配置 APP_PUBLIC_BASE_URL 且 CODER_PROJECTS_DOMAIN 为沙箱地址时必须失败。"""
+    _public_base(monkeypatch, projects_domain="https://sandbox-abc-8080.cxiagents.com")
+    with app_for_callback.test_request_context("/auth/chaoxing"):
+        with pytest.raises(RuntimeError):
+            _app_public_base()
+
+
+def test_public_base_fail_closed_on_invalid_app_public_base(app_for_callback, monkeypatch):
+    """APP_PUBLIC_BASE_URL 被配成沙箱/内部地址时必须失败。"""
+    _public_base(monkeypatch, public="https://sandbox-abc-8080.cxiagents.com")
+    with app_for_callback.test_request_context("/auth/chaoxing"):
+        with pytest.raises(RuntimeError):
+            _app_public_base()
+
+
+def test_proxy_prefix_stripper_also_clears_script_name():
+    """SCRIPT_NAME 被平台代理设成沙箱前缀时，stripper 必须清空它，防止 url_for 泄露。"""
+    from platform_app import _SandboxProxyPrefixStripper
+
+    class App:
+        def __call__(self, environ, start_response):
+            self.captured = environ
+            return [b"ok"]
+
+    inner = App()
+    stripper = _SandboxProxyPrefixStripper(inner)
+    environ = {
+        "SCRIPT_NAME": "/sandboxes/80230478-ac1d-4e99-b8a6-e662006441cc/proxy/8080",
+        "PATH_INFO": "/student/home",
+    }
+    list(stripper(environ, lambda status, headers: None))
+    assert inner.captured["SCRIPT_NAME"] == ""
+    assert inner.captured["PATH_INFO"] == "/student/home"

@@ -32,15 +32,14 @@ def _load_env_files() -> str:
 
 
 class _SandboxProxyPrefixStripper:
-    """Strip the platform sandbox proxy prefix (/sandboxes/<id>/proxy/<port>) from PATH_INFO.
+    """Strip the platform sandbox proxy prefix (/sandboxes/<id>/proxy/<port>) from PATH_INFO and SCRIPT_NAME.
 
-    The platform preview proxy forwards requests without stripping its routing
-    prefix, so Flask sees /sandboxes/.../proxy/5173/login and 404s. This
-    middleware rewrites PATH_INFO to the inner path. It deliberately does NOT
-    touch SCRIPT_NAME: echoing the internal prefix into url_for/redirect
-    Location URLs would leak /sandboxes/.../proxy/<port> into browser-visible
-    addresses, which the gateway then blocks (preview shows a blocked page).
-    Browser-facing URLs must stay root-relative on the subdomain.
+    The platform preview/public proxy forwards requests without stripping its routing
+    prefix, so Flask sees /sandboxes/.../proxy/5173/login and 404s. It may also set
+    SCRIPT_NAME to the same prefix, which causes url_for()/redirect Location URLs to
+    leak /sandboxes/.../proxy/<port> into browser-visible addresses. This middleware
+    rewrites PATH_INFO and resets SCRIPT_NAME for the sandbox prefix so all browser-
+    facing URLs stay root-relative on the subdomain.
     """
 
     def __init__(self, app):
@@ -54,6 +53,9 @@ class _SandboxProxyPrefixStripper:
         match = self._prefix_re.match(path)
         if match:
             environ["PATH_INFO"] = path[match.end():] or "/"
+        script_name = environ.get("SCRIPT_NAME", "")
+        if self._prefix_re.match(script_name):
+            environ["SCRIPT_NAME"] = ""
         return self.app(environ, start_response)
 
 

@@ -153,6 +153,15 @@ def _chaoxing_auth_base() -> str:
     return request.url_root.rstrip("/")
 
 
+def _is_trusted_public_domain(base: str) -> bool:
+    """拒绝沙箱/内部/本地地址作为公开 OAuth 回跳域名。"""
+    lowered = base.casefold()
+    return not any(
+        marker in lowered
+        for marker in ("sandbox", "internal", "/sandboxes/", "localhost", "127.0.0.1", ":5000", ":8080", ":5173")
+    )
+
+
 def _app_public_base() -> str:
     """应用对外公开 base URL（用于超星 OAuth 回跳 redirect_uri，浏览器可见）。
 
@@ -163,14 +172,21 @@ def _app_public_base() -> str:
 
     因此这里绝不依赖 request.url_root，而是按优先级取受信任配置：
       1. APP_PUBLIC_BASE_URL  —— 显式配置的公开域名（公开部署必填），
-      2. CODER_PROJECTS_DOMAIN —— 平台注入的对外访问域名，
+      2. CODER_PROJECTS_DOMAIN —— 平台注入的对外访问域名（拒绝内部沙箱地址），
       3. request.url_root      —— 仅本地开发（无任何配置）兜底。
-    严禁硬编码任何域名。"""
+    严禁硬编码任何域名；缺失或非法公开地址时 fail closed。"""
     base = os.getenv("APP_PUBLIC_BASE_URL", "").strip()
     if base:
+        if not _is_trusted_public_domain(base):
+            raise RuntimeError(f"APP_PUBLIC_BASE_URL 不是可信公开域名: {base}")
         return base.rstrip("/")
     base = os.getenv("CODER_PROJECTS_DOMAIN", "").strip()
     if base:
+        if not _is_trusted_public_domain(base):
+            raise RuntimeError(
+                "APP_PUBLIC_BASE_URL 未配置且 CODER_PROJECTS_DOMAIN 为内部/沙箱地址，"
+                f"无法构造公开 OAuth 回跳地址: {base}"
+            )
         return base.rstrip("/")
     return request.url_root.rstrip("/")
 
