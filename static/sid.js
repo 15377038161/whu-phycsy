@@ -12,9 +12,13 @@
   "use strict";
   var sid = "";
   try {
-    sid = new URLSearchParams(location.search).get("_sid") || window.__SID || "";
+    sid = new URLSearchParams(location.search).get("_sid")
+      || window.__SID
+      || (document.querySelector('meta[name="sid"]') && document.querySelector('meta[name="sid"]').content)
+      || "";
   } catch (e) {
-    sid = window.__SID || "";
+    var meta = document.querySelector('meta[name="sid"]');
+    sid = window.__SID || (meta && meta.content) || "";
   }
   if (!sid) return;
   window.__SID = sid;

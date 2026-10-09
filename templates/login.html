@@ -12,7 +12,7 @@
     </div>
   </div>
   <div class="login-form-side">
-    <form class="login-card" method="post">
+    <form class="login-card" method="post" action="{{ url_for('auth.login') }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <div class="login-role-tabs" role="tablist" aria-label="选择登录身份">
         <button type="button" role="tab" aria-selected="true" data-login-role="student">学生端</button>

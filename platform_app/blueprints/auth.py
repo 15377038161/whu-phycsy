@@ -143,9 +143,34 @@ _CHAOXING_TIMEOUT = 10.0
 
 
 def _chaoxing_auth_base() -> str:
-    """认证代理基地址：开发模式读环境变量（隧道地址），生产退化为当前站点源（Nginx 转发）。
+    """认证代理基地址：服务端到服务端调用超星 authorize/exchange 端点。
+
+    开发模式读 CODER_AUTH_PROXY_URL（隧道地址）；否则退化为 request.url_root。
+    该地址用于后端直连平台认证代理，公开部署中沙箱内部即可达，无需对浏览器可见。
     严禁硬编码绝对 URL。"""
     base = os.getenv("CODER_AUTH_PROXY_URL", "").strip()
+    if base:
+        return base.rstrip("/")
+    return request.url_root.rstrip("/")
+
+
+def _app_public_base() -> str:
+    """应用对外公开 base URL（用于超星 OAuth 回跳 redirect_uri，浏览器可见）。
+
+    与认证代理地址严格区分：这里必须指向用户浏览器可访问的公开域名，而非
+    后端内部地址。公开部署的代理会把 X-Forwarded-Host 写成内部沙箱地址
+    （如 sandbox-xxx-8080.cxiagents.com），ProxyFix 的 x_host=1 会信任该头，
+    导致 url_for(_external=True) 生成沙箱回跳地址、浏览器跳回沙箱而非公开域名。
+
+    因此这里绝不依赖 request.url_root，而是按优先级取受信任配置：
+      1. APP_PUBLIC_BASE_URL  —— 显式配置的公开域名（公开部署必填），
+      2. CODER_PROJECTS_DOMAIN —— 平台注入的对外访问域名，
+      3. request.url_root      —— 仅本地开发（无任何配置）兜底。
+    严禁硬编码任何域名。"""
+    base = os.getenv("APP_PUBLIC_BASE_URL", "").strip()
+    if base:
+        return base.rstrip("/")
+    base = os.getenv("CODER_PROJECTS_DOMAIN", "").strip()
     if base:
         return base.rstrip("/")
     return request.url_root.rstrip("/")
@@ -306,7 +331,10 @@ def _match_roster_student(session, student_no: str, realname: str):
 @bp.get("/auth/chaoxing")
 def chaoxing_login():
     """发起超星一键登录：换取授权地址并顶层跳转。"""
-    callback = url_for("auth.chaoxing_callback", _external=True)
+    # 回跳地址必须用浏览器可见的公开域名（_app_public_base），而非 url_for(_external=True)
+    # 依赖的 request.url_root：公开部署代理会把 X-Forwarded-Host 写成沙箱地址，导致
+    # 回跳进沙箱而非公开域名。
+    callback = f"{_app_public_base()}{url_for('auth.chaoxing_callback')}"
     # 超星是顶层跳转（浏览器整页离开预览 iframe，再跳回），中途会丢失 Cookie
     # 与 URL 里的 _sid 票据。把当前会话票据随 redirect_uri 带回，授权回跳后
     # open_session 才能复用同一会话，避免平台判定“未登录”并弹出拦截页。

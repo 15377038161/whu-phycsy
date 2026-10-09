@@ -16,6 +16,22 @@
 - 端口：一律从 `DEPLOY_RUN_PORT` 读取，禁止硬编码 `5000`。`app.py` 与 `scripts/http_run.sh` 已支持。
 - 多环境 dotenv：应用按 `APP_ENV` 自动加载 `.env` → `.env.<APP_ENV>` → `.env.local`
   （`platform_app/__init__.py::_load_env_files`）。平台注入的环境变量优先级最高（override=False）。
+
+### 2.1 超星 OAuth 回跳地址（公开部署必配）
+
+超星一键登录的回跳 `redirect_uri` 由 `platform_app/blueprints/auth.py::_app_public_base()` 生成，
+用于浏览器授权后跳回应用，必须指向**用户浏览器可访问的公开域名**，与后端直连超星认证代理的
+`_chaoxing_auth_base()`（走 `CODER_AUTH_PROXY_URL` 或 `request.url_root`）严格区分。
+
+公开部署的代理会把 `X-Forwarded-Host` 写成内部沙箱地址（如 `sandbox-xxx-8080.cxiagents.com`），
+而 `ProxyFix` 配置了 `x_host=1` 会信任该头，导致 `url_for(_external=True)` 生成沙箱回跳地址、
+浏览器授权后跳进沙箱而非公开域名。因此回跳地址**绝不依赖 `request.url_root`**，按以下优先级取值：
+
+1. `APP_PUBLIC_BASE_URL` —— 显式配置的公开域名（公开部署必填，如 `https://app-xxx.cxiagents.com`）；
+2. `CODER_PROJECTS_DOMAIN` —— 平台注入的对外访问域名；
+3. `request.url_root` —— 仅本地开发（无任何配置）兜底。
+
+严禁在代码中硬编码任何域名，也严禁把开发/预览沙箱地址写入 `.env.production`。
 - 预览：`APP_ENV=preview` + SQLite（`runtime/platform.db`），无需外部数据库即可启动。
 - 生产：`APP_ENV=production` + `DATABASE_URL=postgresql+psycopg://...`（生产强制 PostgreSQL）。
 
