@@ -31,6 +31,18 @@
 - 建表即迁移：schema 定义在 `db-schema/src/schema.ts`（勿手写 SQL），生成后 `db_execute` 执行；
   执行前必须移除外键 `REFERENCES "public".` 前缀，并在同文件末尾追加最小 `REVOKE/GRANT`。
 - 所有业务表必须 `ENABLE ROW LEVEL SECURITY`；Data API 客户端必须带 `X-Instance-ID` 头，只用 anon key，
-  禁止 service role。已建脚手架：`platform_app/supabase_client.py`（`get_supabase(jwt)`，支持用户 JWT 透传）。
-- 生产 RLS 行级安全依赖 Supabase Auth 的用户 JWT（`auth.uid()`）。本仓库仍为 Flask 自建登录，
-  认证未接入前不得宣称完成数据迁移；接入需 `npx coder-coding-ai supabase auth get-config`（见 DEPLOY_ADAPTATION.md §10）。
+  禁止 service role。已建服务端封装：`platform_app/supabase_client.py` 提供 `auth_get_user(jwt)`、
+  `refresh_access_token(refresh_token)`、`data_api_request(method, path, jwt)`，均通过 `httpx`
+  直接调用 Supabase Auth/Data API，不持有 service role，不本地 decode JWT。
+- 身份映射：超星 OAuth 登录成功后，服务端把 Supabase `access_token` / `refresh_token` 存入服务端
+  `app_sessions` 表（不在 URL/前端/日志中暴露），并通过 `auth_get_user()` 实时校验；`auth.uid()`
+  与本地 `User` 的映射依据为 `user_metadata.cxid` ↔ `User.chaoxing_cxid`（cxid 是超星用户标识）。
+- 服务端诊断端点（仅已登录用户可访问，受全局 CSRF 保护）：
+  - `POST /api/diag/auth`：使用当前会话中的用户 JWT 调用 `/auth/v1/user`，返回环境状态、认证状态、
+    脱敏后的 `auth.uid()` 与本地用户映射关系，不返回 token 或完整 JWT。
+  - `POST /api/diag/data`：使用用户 JWT 查询 Data API 中 `cxid = 当前用户` 的行，验证 RLS 与权限，
+    仅返回脱敏字段与状态。
+- SECURITY DEFINER 审计结论：租户内存在 `app_admin_set_role` 等 SECURITY DEFINER 函数，已授权
+  `authenticated` 执行；该函数内部强制 `current_user = 'admin'` 且先校验调用者角色为 admin，
+  不存在普通用户通过 EXECUTE 越权提权的风险。后续新增 SECURITY DEFINER 函数必须遵循同样模式：
+  最小权限、内部角色校验、仅授权必要角色 EXECUTE。

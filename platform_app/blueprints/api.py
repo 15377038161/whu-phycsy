@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import json
 from datetime import datetime, timezone
+from functools import wraps
 from pathlib import Path
+from urllib.parse import quote
 
-from flask import Blueprint, Response, current_app, jsonify, request, stream_with_context
+from flask import Blueprint, Response, current_app, jsonify, request, session, stream_with_context
 from sqlalchemy import select
 
 from ai_service import ai_ready, stream_student_question, student_ai_restriction
@@ -13,6 +15,7 @@ from ..db import db_session, ready as database_ready
 from ..models import Course, Experiment, ExperimentVersion, SubmissionRevision
 from ..services.experiments import course_for_student, published_experiments
 from ..services.fitting import validate_fit_result
+from ..supabase_client import auth_get_user, data_api_request, refresh_access_token
 from ..teacher_ai import answer_teacher_question
 from ..teacher_analytics import build_teacher_ai_snapshot, get_teacher_analytics
 from .auth import current_user, role_required
@@ -185,3 +188,233 @@ def teacher_assistant():
         return {"error": str(exc)}, 400
     except RuntimeError as exc:
         return {"error": str(exc)}, 503
+
+
+# ── Supabase Auth/Data API 服务端诊断端点 ─────────────────────────
+# 这些端点仅用于确认当前登录用户的 Supabase 认证与映射状态。
+# 它们只返回状态与脱敏标识符，绝不返回 access_token / refresh_token 或完整 JWT 内容。
+
+
+def _login_required_json(fn):
+    @wraps(fn)
+    def wrapped(*args, **kwargs):
+        if current_user() is None:
+            return jsonify({"error": "未登录", "diag_status": "unauthenticated"}), 401
+        return fn(*args, **kwargs)
+
+    return wrapped
+
+
+def _mask_value(value: str | None) -> str | None:
+    """脱敏：长度足够时保留首尾各 4 位，否则全部遮蔽。"""
+    if not value:
+        return None
+    if len(value) <= 4:
+        return "*" * len(value)
+    if len(value) <= 8:
+        return f"{value[0]}{'*' * (len(value) - 2)}{value[-1]}"
+    return f"{value[:4]}***{value[-4:]}"
+
+
+def _env_ok() -> bool:
+    from ..supabase_client import _supabase_env
+
+    return _supabase_env() is not None
+
+
+def _current_cx_token(allow_refresh: bool = True) -> tuple[str | None, str | None]:
+    """从当前服务端会话获取有效的超星/Supabase access_token。
+
+    若 token 已过期且会话中存在 refresh_token，则在服务端静默刷新并更新会话。
+    返回 (token, error_code)；error_code 为 None 表示成功。
+    """
+    access_token = session.get("cx_access_token")
+    refresh_token = session.get("cx_refresh_token")
+    if not access_token:
+        return None, "no_token"
+    if not _env_ok():
+        return None, "missing_env"
+    try:
+        resp = auth_get_user(access_token)
+    except RuntimeError:
+        return None, "missing_env"
+    except Exception:
+        return None, "unreachable"
+    if resp.status_code == 200:
+        return access_token, None
+    if resp.status_code in (401, 403) and allow_refresh and refresh_token:
+        try:
+            rresp = refresh_access_token(refresh_token)
+        except RuntimeError:
+            return None, "missing_env"
+        except Exception:
+            return None, "unreachable"
+        if rresp.status_code != 200:
+            return None, "refresh_failed"
+        payload = rresp.json() or {}
+        new_access = payload.get("access_token")
+        new_refresh = payload.get("refresh_token")
+        if not new_access:
+            return None, "refresh_failed"
+        session["cx_access_token"] = new_access
+        if new_refresh:
+            session["cx_refresh_token"] = new_refresh
+        session.modified = True
+        return new_access, None
+    if resp.status_code in (401, 403):
+        return None, "invalid"
+    return None, "unreachable"
+
+
+@bp.post("/api/diag/auth")
+@_login_required_json
+def diag_auth():
+    """诊断当前登录用户的 Supabase Auth 状态与 auth.uid() → 本地用户映射。"""
+    user = current_user()
+    assert user is not None
+    timestamp = datetime.now(timezone.utc).isoformat()
+    if not _env_ok():
+        return jsonify({
+            "env_ok": False,
+            "auth_status": "missing_env",
+            "local_user_id": user.id,
+            "local_role": user.role,
+            "local_cxid_mask": _mask_value(user.chaoxing_cxid),
+            "timestamp": timestamp,
+        })
+
+    access_token, error = _current_cx_token(allow_refresh=True)
+    if error:
+        return jsonify({
+            "env_ok": True,
+            "auth_status": error,
+            "local_user_id": user.id,
+            "local_role": user.role,
+            "local_cxid_mask": _mask_value(user.chaoxing_cxid),
+            "timestamp": timestamp,
+        })
+
+    try:
+        resp = auth_get_user(access_token)
+    except Exception:
+        return jsonify({
+            "env_ok": True,
+            "auth_status": "unreachable",
+            "local_user_id": user.id,
+            "local_role": user.role,
+            "local_cxid_mask": _mask_value(user.chaoxing_cxid),
+            "timestamp": timestamp,
+        })
+    if resp.status_code != 200:
+        return jsonify({
+            "env_ok": True,
+            "auth_status": "invalid" if resp.status_code in (401, 403) else "unreachable",
+            "local_user_id": user.id,
+            "local_role": user.role,
+            "local_cxid_mask": _mask_value(user.chaoxing_cxid),
+            "timestamp": timestamp,
+        })
+
+    verified = resp.json() or {}
+    supabase_uid = str(verified.get("id") or "")
+    metadata = verified.get("user_metadata") or {}
+    mapped_cxid = str(metadata.get("cxid") or supabase_uid or "")
+    local_cxid = user.chaoxing_cxid or ""
+    mapping_match = bool(local_cxid and mapped_cxid == local_cxid)
+
+    return jsonify({
+        "env_ok": True,
+        "auth_status": "ok",
+        "supabase_uid_mask": _mask_value(supabase_uid),
+        "local_user_id": user.id,
+        "local_role": user.role,
+        "local_cxid_mask": _mask_value(local_cxid),
+        "mapping_match": mapping_match,
+        "timestamp": timestamp,
+    })
+
+
+@bp.post("/api/diag/data")
+@_login_required_json
+def diag_data():
+    """诊断当前登录用户通过自身 JWT 访问 Data API (PostgREST) 的能力。
+
+    只查询当前用户自己的 cxid 对应行，返回脱敏后的映射字段以验证 RLS 与权限。
+    """
+    user = current_user()
+    assert user is not None
+    timestamp = datetime.now(timezone.utc).isoformat()
+    local_cxid = user.chaoxing_cxid
+    if not _env_ok():
+        return jsonify({
+            "env_ok": False,
+            "data_status": "missing_env",
+            "local_user_id": user.id,
+            "local_cxid_mask": _mask_value(local_cxid),
+            "timestamp": timestamp,
+        })
+    if not local_cxid:
+        return jsonify({
+            "env_ok": True,
+            "data_status": "no_cxid",
+            "local_user_id": user.id,
+            "local_cxid_mask": None,
+            "timestamp": timestamp,
+        })
+
+    access_token, error = _current_cx_token(allow_refresh=True)
+    if error:
+        return jsonify({
+            "env_ok": True,
+            "data_status": error,
+            "local_user_id": user.id,
+            "local_cxid_mask": _mask_value(local_cxid),
+            "timestamp": timestamp,
+        })
+
+    path = f"/users?select=id,role,auth_user_id&cxid=eq.{quote(local_cxid, safe='')}&limit=1"
+    try:
+        resp = data_api_request("GET", path, access_token)
+    except Exception:
+        return jsonify({
+            "env_ok": True,
+            "data_status": "unreachable",
+            "local_user_id": user.id,
+            "local_cxid_mask": _mask_value(local_cxid),
+            "timestamp": timestamp,
+        })
+    if resp.status_code in (401, 403):
+        return jsonify({
+            "env_ok": True,
+            "data_status": "forbidden",
+            "local_user_id": user.id,
+            "local_cxid_mask": _mask_value(local_cxid),
+            "timestamp": timestamp,
+        })
+    if resp.status_code != 200:
+        return jsonify({
+            "env_ok": True,
+            "data_status": "unreachable",
+            "local_user_id": user.id,
+            "local_cxid_mask": _mask_value(local_cxid),
+            "timestamp": timestamp,
+        })
+
+    rows = resp.json() or []
+    row = rows[0] if rows else None
+    safe_row = None
+    if row and isinstance(row, dict):
+        safe_row = {
+            "id": row.get("id"),
+            "role": row.get("role"),
+            "auth_user_id_mask": _mask_value(str(row.get("auth_user_id") or "")),
+        }
+    return jsonify({
+        "env_ok": True,
+        "data_status": "ok" if row else "empty",
+        "row_count": len(rows),
+        "row": safe_row,
+        "local_user_id": user.id,
+        "local_cxid_mask": _mask_value(local_cxid),
+        "timestamp": timestamp,
+    })
