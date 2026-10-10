@@ -116,21 +116,35 @@ def test_frame_ancestors_allows_configured_public_origins(security_app, monkeypa
     monkeypatch.setenv("PLATFORM_FRAME_ANCESTORS", "https://portal.example.com,https://lms.example.edu")
     client = security_app.test_client()
     response = client.get("/login")
-    assert response.headers["X-Frame-Options"] == "SAMEORIGIN"
+    # X-Frame-Options 始终 DENY，仅 CSP frame-ancestors 授权显式父源（不含 'self'）。
+    assert response.headers["X-Frame-Options"] == "DENY"
     csp = response.headers["Content-Security-Policy"]
-    assert "frame-ancestors 'self' https://portal.example.com https://lms.example.edu" in csp
+    assert "frame-ancestors https://portal.example.com https://lms.example.edu" in csp
+    assert "'self'" not in csp.split("frame-ancestors")[1].split(";")[0]
 
 
-def test_frame_ancestors_filters_unsafe_origins_but_keeps_safe_ones(security_app, monkeypatch):
-    # 混合列表中应过滤掉沙箱/内部/本地地址，但保留合法公开 origin。
+def test_frame_ancestors_filters_non_origin_parts(security_app, monkeypatch):
+    # 混合列表中只保留合法 origin；userinfo、path、query、fragment、通配符、非 http(s) 均被过滤。
     monkeypatch.setenv(
         "PLATFORM_FRAME_ANCESTORS",
-        "https://sandbox.internal.dev.cxiagents.com,https://localhost:5173,https://app.example.com",
+        "https://user:pass@bad.example.com,https://app.example.com/path,https://wild.*.example.com,ftp://ftp.example.com,https://app.example.com?x=1,https://app.example.com#frag,https://good.example.com",
     )
     client = security_app.test_client()
     response = client.get("/login")
-    assert response.headers["X-Frame-Options"] == "SAMEORIGIN"
+    assert response.headers["X-Frame-Options"] == "DENY"
     csp = response.headers["Content-Security-Policy"]
-    assert "frame-ancestors 'self' https://app.example.com" in csp
-    assert "sandbox.internal" not in csp
-    assert "localhost" not in csp
+    assert "frame-ancestors https://good.example.com" in csp
+    assert "bad.example.com" not in csp
+    assert "app.example.com" not in csp
+    assert "ftp://" not in csp
+
+
+def test_frame_ancestors_ignores_projects_domain(security_app, monkeypatch):
+    # CODER_PROJECTS_DOMAIN 是应用自身域名，不自动作为 iframe 父源授权。
+    monkeypatch.delenv("PLATFORM_FRAME_ANCESTORS", raising=False)
+    monkeypatch.setenv("CODER_PROJECTS_DOMAIN", "https://portal.example.com")
+    client = security_app.test_client()
+    response = client.get("/login")
+    assert response.headers["X-Frame-Options"] == "DENY"
+    csp = response.headers["Content-Security-Policy"]
+    assert "frame-ancestors 'none'" in csp

@@ -32,11 +32,11 @@
 3. `request.url_root` —— 仅本地开发（无任何配置）兜底。
 
 启动阶段会解析一次并缓存到 `app.config["APP_PUBLIC_BASE_URL"]`：
-- 生产环境（`APP_ENV=production`）必须显式配置合法公开域名，否则启动即失败；
-- 预览/开发环境若遇到沙箱/内部域名，会回退到 `http://localhost:5000`，保证非 OAuth 页面可正常启动；
-- 实际发起超星 OAuth 时，请求上下文会再次严格校验，非法域名仍会直接报错，防止把内部地址泄露给浏览器。
+- 生产环境（`APP_ENV=production`）必须配置合法公开域名，否则启动即失败；
+- 预览/开发环境若遇到沙箱/内部/本地域名，会回退到 `http://localhost:5000`，保证非 OAuth 页面可正常启动；
+- 实际发起超星 OAuth 时，请求上下文会再次严格解析环境变量，非法域名仍会直接报错，不会使用缓存的 localhost 生成 redirect_uri。
 
-严禁在代码中硬编码任何域名，也严禁把开发/预览沙箱地址写入 `.env.production`。
+校验使用 `urllib.parse.urlsplit`：要求 https 协议、有 hostname、无 userinfo、无 path/query/fragment、端口为默认 443 或显式 443；并额外拒绝沙箱/内部/本地地址。严禁在代码中硬编码任何域名，也严禁把开发/预览沙箱地址写入 `.env.production`。
 - 预览：`APP_ENV=preview` + SQLite（`runtime/platform.db`），无需外部数据库即可启动。
 - 生产：`APP_ENV=production` + `DATABASE_URL=postgresql+psycopg://...`（生产强制 PostgreSQL）。
 
@@ -72,9 +72,9 @@ python3 -m gunicorn --bind 0.0.0.0:"${DEPLOY_RUN_PORT:-5000}" --workers 2 --time
 
 - 强制 HTTPS 安全头：`Strict-Transport-Security`（production）、`X-Content-Type-Options: nosniff`、
   `Referrer-Policy`、`Permissions-Policy`、`X-Permitted-Cross-Domain-Policies`、CSP（含 Pyodide 源白名单）；移除 `Server` 头。
-- iframe 嵌入策略：默认 `X-Frame-Options: DENY` + CSP `frame-ancestors 'none'`；
-  需要被平台/门户嵌入时，显式设置环境变量 `PLATFORM_FRAME_ANCESTORS=https://portal.example.com,https://lms.example.edu`（逗号分隔），
-  此时切换为 `X-Frame-Options: SAMEORIGIN` 并将合法父源加入 `frame-ancestors`。沙箱/内部/本地地址会被过滤，不会自动授权。
+- iframe 嵌入策略：`X-Frame-Options` 始终 `DENY`；CSP `frame-ancestors` 默认 `'none'`。
+  需要被平台/门户嵌入时，显式设置环境变量 `PLATFORM_FRAME_ANCESTORS=https://portal.example.com,https://lms.example.edu`（逗号分隔）。
+  只接受无 userinfo/path/query/fragment/通配符的 http(s) origin；`CODER_PROJECTS_DOMAIN` 是应用自身域名，不会自动作为父源授权，也不加入 `'self'`。
 - 会话：`HttpOnly`、`SameSite=Lax`、production 下 `Secure`。
 - 认证：scrypt 密码哈希、全局 CSRF 校验、登录失败 5 次/5 分钟锁定（返回 429）与审计日志。
 - 生产 `DEBUG` 恒为 False（`APP_ENV=production`），不暴露调试信息。

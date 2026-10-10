@@ -59,29 +59,18 @@ class _SandboxProxyPrefixStripper:
         return self.app(environ, start_response)
 
 
-def _is_unsafe_frame_origin(origin: str) -> bool:
-    """Reject sandbox/internal/local origins for frame embedding."""
-    lowered = origin.casefold()
-    return any(
-        marker in lowered
-        for marker in ("sandbox", "internal", "/sandboxes/", "localhost", "127.0.0.1", ":5000", ":8080", ":5173")
-    )
-
-
 def _platform_frame_ancestors() -> list[str]:
-    """Return trusted parent origins allowed to embed this app in an iframe.
+    """返回显式配置的可信父源 origin 列表。
 
-    Reads PLATFORM_FRAME_ANCESTORS (comma-separated origins) first, then falls
-    back to CODER_PROJECTS_DOMAIN. Only public/production-looking origins are
-    kept; sandbox/internal/local addresses are rejected so the app does not leak
-    into untrusted preview contexts. An empty list means default-deny
-    (X-Frame-Options: DENY, frame-ancestors 'none').
+    只读取 PLATFORM_FRAME_ANCESTORS（逗号分隔）；CODER_PROJECTS_DOMAIN 是应用自身
+    对外域名，不自动作为 iframe 父源授权。每个 origin 必须满足：
+      - scheme 为 https 或 http
+      - 有合法 hostname
+      - 无 userinfo、path、query、fragment
+      - hostname 不含通配符
+    空列表表示默认拒绝任何 iframe 嵌入。
     """
     raw = os.getenv("PLATFORM_FRAME_ANCESTORS", "").strip()
-    if not raw:
-        domain = os.getenv("CODER_PROJECTS_DOMAIN", "").strip()
-        if domain:
-            raw = domain if "://" in domain else f"https://{domain}"
     ancestors: list[str] = []
     for item in raw.split(","):
         origin = item.strip()
@@ -90,11 +79,17 @@ def _platform_frame_ancestors() -> list[str]:
         if "://" not in origin:
             origin = f"https://{origin}"
         parsed = urlsplit(origin)
-        if parsed.scheme not in {"http", "https"}:
+        if parsed.scheme not in {"https", "http"}:
             continue
-        if not parsed.netloc:
+        if not parsed.hostname:
             continue
-        if _is_unsafe_frame_origin(origin):
+        if parsed.username is not None or parsed.password is not None:
+            continue
+        if parsed.path not in ("", "/"):
+            continue
+        if parsed.query or parsed.fragment:
+            continue
+        if "*" in parsed.hostname:
             continue
         ancestors.append(f"{parsed.scheme}://{parsed.netloc}")
     return ancestors
@@ -236,17 +231,12 @@ def create_app(test_config: dict | None = None) -> Flask:
         external = f" {pyodide_origin}" if pyodide_origin else ""
         response.headers["X-Content-Type-Options"] = "nosniff"
 
-        # 平台原生嵌入契约：只有明确配置了可信父源（CODER_PROJECTS_DOMAIN 或
-        # PLATFORM_FRAME_ANCESTORS）时才授权 frame-ancestors；否则默认严格拒绝
-        # 任何 iframe 嵌入（X-Frame-Options: DENY + frame-ancestors 'none'）。
-        # 平台环境中 X-Frame-Options 仍保持 SAMEORIGIN，由 CSP frame-ancestors 做最终授权。
+        # iframe 嵌入策略：默认严格拒绝（X-Frame-Options: DENY + frame-ancestors 'none'）。
+        # 只有显式配置 PLATFORM_FRAME_ANCESTORS 时才将指定 origin 加入 frame-ancestors；
+        # CODER_PROJECTS_DOMAIN 是应用自身域名，不会自动作为父源授权，也不擅自加入 'self'。
+        response.headers["X-Frame-Options"] = "DENY"
         platform_ancestors = _platform_frame_ancestors()
-        if platform_ancestors:
-            response.headers["X-Frame-Options"] = "SAMEORIGIN"
-            frame_ancestors = " ".join(["'self'", *platform_ancestors])
-        else:
-            response.headers["X-Frame-Options"] = "DENY"
-            frame_ancestors = "'none'"
+        frame_ancestors = " ".join(platform_ancestors) if platform_ancestors else "'none'"
 
         response.headers["Content-Security-Policy"] = (
             "default-src 'self'; "

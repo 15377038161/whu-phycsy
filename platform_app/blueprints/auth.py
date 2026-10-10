@@ -4,6 +4,7 @@ import json
 import os
 import time
 from functools import wraps
+from urllib.parse import urlsplit
 
 import httpx
 from flask import Blueprint, current_app, flash, redirect, render_template, request, send_file, session, url_for
@@ -161,7 +162,11 @@ def _chaoxing_auth_base() -> str:
 
 
 def _is_sandbox_or_internal_domain(base: str) -> bool:
-    """识别沙箱/内部/本地地址；合法公开域名返回 False。"""
+    """识别沙箱/内部/本地地址；合法公开域名返回 False。
+
+    作为 urlsplit 结构校验之外的策略层：即使形式合法，沙箱/内部/本地地址
+    也不得作为浏览器可见的 OAuth 回跳域名。
+    """
     lowered = base.casefold()
     return any(
         marker in lowered
@@ -169,9 +174,28 @@ def _is_sandbox_or_internal_domain(base: str) -> bool:
     )
 
 
-def _is_trusted_public_domain(base: str) -> bool:
-    """拒绝沙箱/内部/本地地址作为公开 OAuth 回跳域名。"""
-    return not _is_sandbox_or_internal_domain(base)
+def _is_valid_public_base(base: str) -> tuple[bool, str]:
+    """使用 urlsplit 做完整结构校验公开 base URL。
+
+    要求：https 协议、有 hostname、无 userinfo、无 path/query/fragment、
+    端口要么省略（默认 443）要么显式 443。不满足时返回 (False, reason)。
+    """
+    parsed = urlsplit(base)
+    if parsed.scheme != "https":
+        return False, "必须使用 https 协议"
+    if not parsed.hostname:
+        return False, "缺少 hostname"
+    if parsed.username is not None or parsed.password is not None:
+        return False, "不允许 userinfo"
+    if parsed.path not in ("", "/"):
+        return False, "不允许 path"
+    if parsed.query or parsed.fragment:
+        return False, "不允许 query 或 fragment"
+    if parsed.port is not None and parsed.port != 443:
+        return False, "异常端口"
+    if _is_sandbox_or_internal_domain(base):
+        return False, "沙箱/内部/本地地址不可作为公开域名"
+    return True, ""
 
 
 def _resolve_app_public_base(
@@ -203,11 +227,13 @@ def _resolve_app_public_base(
         base = os.getenv("CODER_PROJECTS_DOMAIN", "").strip()
         source = "CODER_PROJECTS_DOMAIN"
     if base:
-        # 显式配置的地址若不可信必须失败，禁止静默回退到 request.url_root，
-        # 否则会把沙箱/内部地址泄露到浏览器可见的 OAuth 回跳地址中。
-        if not _is_trusted_public_domain(base):
+        # 没有 scheme 时按公开部署约定补 https，随后做完整 urlsplit 校验。
+        if "://" not in base:
+            base = f"https://{base}"
+        valid, reason = _is_valid_public_base(base)
+        if not valid:
             raise RuntimeError(
-                f"{source} 不是可信公开域名，无法构造公开 OAuth 回跳地址: {base}"
+                f"{source} 无效，无法构造公开 OAuth 回跳地址: {reason}: {base}"
             )
         return base.rstrip("/")
     # 未配置任何公开地址时，仅允许本地开发/测试回退到 request.url_root。
@@ -223,16 +249,24 @@ def _resolve_app_public_base(
 
 
 def _app_public_base() -> str:
-    """请求上下文中获取公开 base URL；优先使用启动时缓存的 app.config 值。
-
-    启动阶段已将解析结果写入 app.config["APP_PUBLIC_BASE_URL"]；请求时直接
-    复用，避免在沙箱/测试环境中每次请求都重新解析可能不合法的 CODER_PROJECTS_DOMAIN。
-    若缓存未命中（理论上不应发生），再回退到环境变量解析。
-    """
+    """内部重定向用公开 base URL：优先使用启动时缓存值，保证非 OAuth 页面可用。"""
     configured = current_app.config.get("APP_PUBLIC_BASE_URL", "")
     if configured:
         return configured.rstrip("/")
     return _resolve_app_public_base(allow_local=True, request_url_root=request.url_root.rstrip("/"))
+
+
+def _strict_app_public_base() -> str:
+    """OAuth 回跳用公开 base URL：每次重新严格解析环境变量，非法配置直接失败。
+
+    开发/预览无配置时允许回退到 request.url_root；生产环境无配置或配置非法均失败。
+    """
+    env = current_app.config.get("APP_ENV", "development")
+    return _resolve_app_public_base(
+        fail_closed=(env == "production"),
+        allow_local=(env != "production"),
+        request_url_root=request.url_root.rstrip("/"),
+    )
 
 
 def check_app_public_base_at_startup(*, env: str) -> str:
@@ -458,10 +492,10 @@ def _match_roster_student(session, student_no: str, realname: str):
 @bp.get("/auth/chaoxing")
 def chaoxing_login():
     """发起超星一键登录：换取授权地址并顶层跳转。"""
-    # 回跳地址必须用浏览器可见的公开域名（_app_public_base），而非 url_for(_external=True)
+    # 回跳地址必须用浏览器可见的公开域名（_strict_app_public_base），而非 url_for(_external=True)
     # 依赖的 request.url_root：公开部署代理会把 X-Forwarded-Host 写成沙箱地址，导致
-    # 回跳进沙箱而非公开域名。
-    callback = f"{_app_public_base()}{url_for('auth.chaoxing_callback')}"
+    # 回跳进沙箱而非公开域名。OAuth 场景必须每次严格解析，不能直接使用内部重定向缓存。
+    callback = f"{_strict_app_public_base()}{url_for('auth.chaoxing_callback')}"
     # 超星是顶层跳转（浏览器整页离开预览 iframe，再跳回），中途会丢失 Cookie
     # 与 URL 里的 _sid 票据。把当前会话票据随 redirect_uri 带回，授权回跳后
     # open_session 才能复用同一会话，避免平台判定“未登录”并弹出拦截页。

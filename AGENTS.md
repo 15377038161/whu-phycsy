@@ -20,8 +20,8 @@
 - 预览用 `APP_ENV=preview` + SQLite；生产必须 `APP_ENV=production` + PostgreSQL `DATABASE_URL`。
 - 新增了 `platform_app/logging_utils.py`（结构化访问日志 + request_id），级别受 `LOG_LEVEL` 控制。
 - 新增了 `platform_app/health_monitor.py`（启动自检 + 后台连接监控）：`create_app` 启动时同步校验核心依赖可导入、数据库可达、数据目录存在；随后守护线程周期性复查 database/files（`HEALTH_CHECK_INTERVAL_SECONDS`，默认 60s）与可选 AI（`HEALTH_AI_INTERVAL_SECONDS`，默认 300s）。快照经 `/health` 暴露，`/ready` 仅由 database+files 决定（AI 为可选增强，未配置不影响就绪，避免平台探针误判连接被拒）。
-- 公开基址：启动时按 `APP_PUBLIC_BASE_URL` → `CODER_PROJECTS_DOMAIN` → `localhost` 解析并缓存到 `app.config["APP_PUBLIC_BASE_URL"]`；生产环境必须显式配置合法公开域名，预览/开发遇到沙箱/内部域名会回退到 `http://localhost:5000` 以保证非 OAuth 页面可启动。超星 OAuth 回跳在请求时再次严格校验，非法域名直接报错。
-- iframe 嵌入：默认拒绝（`X-Frame-Options: DENY`，`frame-ancestors 'none'`）；需要被平台/门户嵌入时，显式设置 `PLATFORM_FRAME_ANCESTORS=https://portal.example.com,https://lms.example.edu`，沙箱/内部/本地地址会被过滤掉。
+- 公开基址：启动时按 `APP_PUBLIC_BASE_URL` → `CODER_PROJECTS_DOMAIN` → `localhost` 解析并缓存到 `app.config["APP_PUBLIC_BASE_URL"]`；生产环境必须配置合法公开域名，预览/开发遇到沙箱/内部/本地域名会回退到 `http://localhost:5000` 以保证非 OAuth 页面可启动。校验使用 urlsplit（协议/hostname/端口/userinfo/path/query/fragment），并额外拒绝沙箱/内部/本地地址；超星 OAuth 回跳在请求时再次严格解析，非法域名直接报错，不会使用缓存的 localhost 生成 redirect_uri。
+- iframe 嵌入：默认拒绝（`X-Frame-Options: DENY`，`frame-ancestors 'none'`）；只读取显式 `PLATFORM_FRAME_ANCESTORS`（逗号分隔），`CODER_PROJECTS_DOMAIN` 是应用自身域名，不会自动作为父源授权，也不擅自加入 `'self'`。每个父源必须是无 userinfo/path/query/fragment/通配符的 http(s) origin。
 - 交付/排障见 `DEPLOY_ADAPTATION.md`。
 
 ## 内置数据库接入契约（Supabase / Data API）

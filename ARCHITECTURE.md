@@ -88,7 +88,7 @@ AI 答复中的 Markdown 与 LaTeX 必须经过先转义、后白名单格式化
 
 密码修改与教师重置学生密码均经账户服务校验并写入审计事件。所有上传在流式写入前校验扩展名与 MIME 双重白名单，明确拒绝 SVG、HTML、XML 等可执行文档；封面只接受 JPG、PNG、WebP，视频只接受 MP4、WebM、MOV、M4V，学生附件仅接受已登记的图片和常见文档类型。文件采用 SHA-256 内容寻址，默认上限 500 MB（`MAX_UPLOAD_MB`），生产文件卷必须与数据库同批备份。`/media` 仅内联安全图片/视频类型，其余已登记媒体强制下载，并统一返回 `nosniff`。
 
-应用统一返回 `X-Content-Type-Options: nosniff` 和限制到本应用及 `PYODIDE_BASE_URL` 源的 CSP；生产环境另返回一年的 HSTS。`X-Frame-Options` 默认 `DENY`，对应 CSP `frame-ancestors 'none'`；当显式配置可信父源（`PLATFORM_FRAME_ANCESTORS` 或可信的 `CODER_PROJECTS_DOMAIN`）时切换为 `SAMEORIGIN` 并将父源加入 `frame-ancestors`。KaTeX 与 lucide 均位于 `static/vendor/`，不依赖公共图标 CDN；Pyodide 的脚本、连接和 Worker 来源由 `PYODIDE_BASE_URL` 自动加入 CSP。沙箱/内部/本地地址不会自动获得 iframe 嵌入授权。
+应用统一返回 `X-Content-Type-Options: nosniff` 和限制到本应用及 `PYODIDE_BASE_URL` 源的 CSP；生产环境另返回一年的 HSTS。`X-Frame-Options` 始终 `DENY`；CSP `frame-ancestors` 默认 `'none'`，仅当显式配置 `PLATFORM_FRAME_ANCESTORS` 时才加入指定 origin（不含 `'self'`），`CODER_PROJECTS_DOMAIN` 不会自动作为父源授权。每个父源必须是无 userinfo/path/query/fragment/通配符的 http(s) origin。KaTeX 与 lucide 均位于 `static/vendor/`，不依赖公共图标 CDN；Pyodide 的脚本、连接和 Worker 来源由 `PYODIDE_BASE_URL` 自动加入 CSP。
 
 ## 7. 验证
 
