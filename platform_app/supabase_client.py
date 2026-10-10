@@ -27,6 +27,11 @@ def _supabase_env() -> tuple[str, str, str] | None:
     return url.rstrip("/"), anon_key, tenant_id
 
 
+def _env_ok() -> bool:
+    """Return True if all required Supabase environment variables are present."""
+    return _supabase_env() is not None
+
+
 def _headers(jwt: str) -> dict[str, str]:
     env = _supabase_env()
     if env is None:

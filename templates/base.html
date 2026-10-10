@@ -38,6 +38,8 @@
     <div class="user-actions">
       <span class="role-chip">{{ '教师' if user.role == 'teacher' else '学生' }}</span>
       <span>{{ user.name }}</span>
+      <form method="post" action="{{ url_for('api.diag_auth') }}" class="diag-form" title="诊断认证连接" aria-label="诊断认证连接"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="icon-button" type="submit"><i data-lucide="shield-check"></i></button></form>
+      <form method="post" action="{{ url_for('api.diag_data') }}" class="diag-form" title="诊断数据连接" aria-label="诊断数据连接"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="icon-button" type="submit"><i data-lucide="database"></i></button></form>
       <button class="icon-button" type="button" title="修改密码" aria-label="修改密码" data-open-modal="account-password"><i data-lucide="key-round"></i></button>
       <form method="post" action="{{ url_for('auth.logout') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="icon-button" title="退出登录" aria-label="退出登录"><i data-lucide="log-out"></i></button></form>
     </div>

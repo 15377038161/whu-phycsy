@@ -15,10 +15,10 @@ from ..db import db_session, ready as database_ready
 from ..models import Course, Experiment, ExperimentVersion, SubmissionRevision
 from ..services.experiments import course_for_student, published_experiments
 from ..services.fitting import validate_fit_result
-from ..supabase_client import auth_get_user, data_api_request, refresh_access_token
+from ..supabase_client import _env_ok as _supabase_env_ok, data_api_request
 from ..teacher_ai import answer_teacher_question
 from ..teacher_analytics import build_teacher_ai_snapshot, get_teacher_analytics
-from .auth import current_user, role_required
+from .auth import _refresh_access_token, _verify_access_token, current_user, role_required
 
 bp = Blueprint("api", __name__)
 
@@ -205,216 +205,117 @@ def _login_required_json(fn):
     return wrapped
 
 
-def _mask_value(value: str | None) -> str | None:
-    """脱敏：长度足够时保留首尾各 4 位，否则全部遮蔽。"""
-    if not value:
-        return None
-    if len(value) <= 4:
-        return "*" * len(value)
-    if len(value) <= 8:
-        return f"{value[0]}{'*' * (len(value) - 2)}{value[-1]}"
-    return f"{value[:4]}***{value[-4:]}"
+def _current_valid_token() -> tuple[str | None, str | None]:
+    """从当前服务端会话获取有效的 Supabase access_token，必要时静默刷新。
 
-
-def _env_ok() -> bool:
-    from ..supabase_client import _supabase_env
-
-    return _supabase_env() is not None
-
-
-def _current_cx_token(allow_refresh: bool = True) -> tuple[str | None, str | None]:
-    """从当前服务端会话获取有效的超星/Supabase access_token。
-
-    若 token 已过期且会话中存在 refresh_token，则在服务端静默刷新并更新会话。
-    返回 (token, error_code)；error_code 为 None 表示成功。
+    复用 auth.py 的 `_verify_access_token` / `_refresh_access_token`，刷新后必须
+    重新调用 getUser 验证，才能确认新 token 有效。返回 (token, error_code)。
     """
     access_token = session.get("cx_access_token")
     refresh_token = session.get("cx_refresh_token")
     if not access_token:
         return None, "no_token"
-    if not _env_ok():
-        return None, "missing_env"
-    try:
-        resp = auth_get_user(access_token)
-    except RuntimeError:
-        return None, "missing_env"
-    except Exception:
-        return None, "unreachable"
-    if resp.status_code == 200:
+
+    user, _error = _verify_access_token(access_token)
+    if user is not None:
         return access_token, None
-    if resp.status_code in (401, 403) and allow_refresh and refresh_token:
-        try:
-            rresp = refresh_access_token(refresh_token)
-        except RuntimeError:
-            return None, "missing_env"
-        except Exception:
-            return None, "unreachable"
-        if rresp.status_code != 200:
-            return None, "refresh_failed"
-        payload = rresp.json() or {}
-        new_access = payload.get("access_token")
-        new_refresh = payload.get("refresh_token")
-        if not new_access:
-            return None, "refresh_failed"
-        session["cx_access_token"] = new_access
-        if new_refresh:
-            session["cx_refresh_token"] = new_refresh
-        session.modified = True
-        return new_access, None
-    if resp.status_code in (401, 403):
+
+    if not refresh_token:
         return None, "invalid"
-    return None, "unreachable"
+
+    payload, _refresh_error = _refresh_access_token(refresh_token)
+    if payload is None:
+        return None, "invalid"
+
+    new_access = payload.get("access_token")
+    new_refresh = payload.get("refresh_token")
+    if not new_access:
+        return None, "invalid"
+
+    # 刷新后必须重新 getUser 验证，不能直接信任刷新响应。
+    user, _verify_error = _verify_access_token(new_access)
+    if user is None:
+        return None, "invalid"
+
+    session["cx_access_token"] = new_access
+    if new_refresh:
+        session["cx_refresh_token"] = new_refresh
+    session.modified = True
+    return new_access, None
+
+
+def _diag_response(status: str) -> Response:
+    """返回固定诊断状态；浏览器表单提交时渲染简单 HTML，API/测试返回 JSON。"""
+    if "text/html" in request.accept_mimetypes:
+        html = (
+            "<!doctype html><html lang=\"zh-CN\">"
+            "<head><meta charset=\"utf-8\"><title>连接诊断</title></head>"
+            f"<body><h1>连接诊断</h1><p>状态：<code>{status}</code></p>"
+            "<button onclick=\"history.back()\">返回</button></body></html>"
+        )
+        return Response(html, content_type="text/html; charset=utf-8")
+    return jsonify({"status": status})
 
 
 @bp.post("/api/diag/auth")
 @_login_required_json
 def diag_auth():
-    """诊断当前登录用户的 Supabase Auth 状态与 auth.uid() → 本地用户映射。"""
-    user = current_user()
-    assert user is not None
-    timestamp = datetime.now(timezone.utc).isoformat()
-    if not _env_ok():
-        return jsonify({
-            "env_ok": False,
-            "auth_status": "missing_env",
-            "local_user_id": user.id,
-            "local_role": user.role,
-            "local_cxid_mask": _mask_value(user.chaoxing_cxid),
-            "timestamp": timestamp,
-        })
+    """诊断当前登录用户的 Supabase Auth 状态。
 
-    access_token, error = _current_cx_token(allow_refresh=True)
+    仅返回固定状态枚举，不输出 user_id、role、cxid、JWT、SID 或任何个人资料。
+    """
+    if not _supabase_env_ok():
+        return _diag_response("missing_env")
+
+    _access_token, error = _current_valid_token()
     if error:
-        return jsonify({
-            "env_ok": True,
-            "auth_status": error,
-            "local_user_id": user.id,
-            "local_role": user.role,
-            "local_cxid_mask": _mask_value(user.chaoxing_cxid),
-            "timestamp": timestamp,
-        })
+        return _diag_response(error)
 
-    try:
-        resp = auth_get_user(access_token)
-    except Exception:
-        return jsonify({
-            "env_ok": True,
-            "auth_status": "unreachable",
-            "local_user_id": user.id,
-            "local_role": user.role,
-            "local_cxid_mask": _mask_value(user.chaoxing_cxid),
-            "timestamp": timestamp,
-        })
-    if resp.status_code != 200:
-        return jsonify({
-            "env_ok": True,
-            "auth_status": "invalid" if resp.status_code in (401, 403) else "unreachable",
-            "local_user_id": user.id,
-            "local_role": user.role,
-            "local_cxid_mask": _mask_value(user.chaoxing_cxid),
-            "timestamp": timestamp,
-        })
-
-    verified = resp.json() or {}
-    supabase_uid = str(verified.get("id") or "")
-    metadata = verified.get("user_metadata") or {}
-    mapped_cxid = str(metadata.get("cxid") or supabase_uid or "")
-    local_cxid = user.chaoxing_cxid or ""
-    mapping_match = bool(local_cxid and mapped_cxid == local_cxid)
-
-    return jsonify({
-        "env_ok": True,
-        "auth_status": "ok",
-        "supabase_uid_mask": _mask_value(supabase_uid),
-        "local_user_id": user.id,
-        "local_role": user.role,
-        "local_cxid_mask": _mask_value(local_cxid),
-        "mapping_match": mapping_match,
-        "timestamp": timestamp,
-    })
+    return _diag_response("ok")
 
 
 @bp.post("/api/diag/data")
 @_login_required_json
 def diag_data():
-    """诊断当前登录用户通过自身 JWT 访问 Data API (PostgREST) 的能力。
+    """诊断当前登录用户通过自身 JWT 访问 Data API 的能力。
 
-    只查询当前用户自己的 cxid 对应行，返回脱敏后的映射字段以验证 RLS 与权限。
+    先 Auth getUser 取得已验证 UUID，再按 auth_user_id=eq.本人UUID 查询 users 表，
+    逐行确认归属后只返回 mapping_exists 对应的固定状态。禁止用 user_metadata.cxid
+    授权，禁止回退到 cxid 推断映射，不返回行内容或个人资料。
     """
-    user = current_user()
-    assert user is not None
-    timestamp = datetime.now(timezone.utc).isoformat()
-    local_cxid = user.chaoxing_cxid
-    if not _env_ok():
-        return jsonify({
-            "env_ok": False,
-            "data_status": "missing_env",
-            "local_user_id": user.id,
-            "local_cxid_mask": _mask_value(local_cxid),
-            "timestamp": timestamp,
-        })
-    if not local_cxid:
-        return jsonify({
-            "env_ok": True,
-            "data_status": "no_cxid",
-            "local_user_id": user.id,
-            "local_cxid_mask": None,
-            "timestamp": timestamp,
-        })
+    if not _supabase_env_ok():
+        return _diag_response("missing_env")
 
-    access_token, error = _current_cx_token(allow_refresh=True)
+    access_token, error = _current_valid_token()
     if error:
-        return jsonify({
-            "env_ok": True,
-            "data_status": error,
-            "local_user_id": user.id,
-            "local_cxid_mask": _mask_value(local_cxid),
-            "timestamp": timestamp,
-        })
+        return _diag_response(error)
 
-    path = f"/users?select=id,role,auth_user_id&cxid=eq.{quote(local_cxid, safe='')}&limit=1"
+    user, _error = _verify_access_token(access_token)
+    if user is None:
+        return _diag_response("invalid")
+
+    auth_uid = str(user.get("id") or "")
+    if not auth_uid:
+        return _diag_response("invalid")
+
+    path = f"/users?select=auth_user_id&auth_user_id=eq.{quote(auth_uid, safe='')}&limit=1"
     try:
         resp = data_api_request("GET", path, access_token)
     except Exception:
-        return jsonify({
-            "env_ok": True,
-            "data_status": "unreachable",
-            "local_user_id": user.id,
-            "local_cxid_mask": _mask_value(local_cxid),
-            "timestamp": timestamp,
-        })
-    if resp.status_code in (401, 403):
-        return jsonify({
-            "env_ok": True,
-            "data_status": "forbidden",
-            "local_user_id": user.id,
-            "local_cxid_mask": _mask_value(local_cxid),
-            "timestamp": timestamp,
-        })
-    if resp.status_code != 200:
-        return jsonify({
-            "env_ok": True,
-            "data_status": "unreachable",
-            "local_user_id": user.id,
-            "local_cxid_mask": _mask_value(local_cxid),
-            "timestamp": timestamp,
-        })
+        return _diag_response("unreachable")
 
-    rows = resp.json() or []
-    row = rows[0] if rows else None
-    safe_row = None
-    if row and isinstance(row, dict):
-        safe_row = {
-            "id": row.get("id"),
-            "role": row.get("role"),
-            "auth_user_id_mask": _mask_value(str(row.get("auth_user_id") or "")),
-        }
-    return jsonify({
-        "env_ok": True,
-        "data_status": "ok" if row else "empty",
-        "row_count": len(rows),
-        "row": safe_row,
-        "local_user_id": user.id,
-        "local_cxid_mask": _mask_value(local_cxid),
-        "timestamp": timestamp,
-    })
+    if resp.status_code in (401, 403):
+        return _diag_response("forbidden")
+    if resp.status_code != 200:
+        return _diag_response("unreachable")
+
+    try:
+        rows = resp.json() or []
+    except Exception:
+        return _diag_response("unreachable")
+
+    mapping_exists = any(
+        isinstance(row, dict) and str(row.get("auth_user_id") or "") == auth_uid
+        for row in rows
+    )
+    return _diag_response("ok" if mapping_exists else "forbidden")
