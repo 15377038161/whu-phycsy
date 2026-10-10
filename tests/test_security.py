@@ -110,3 +110,27 @@ def test_security_headers_and_production_hsts(security_app):
     assert "frame-ancestors 'none'" in response.headers["Content-Security-Policy"]
     security_app.config["APP_ENV"] = "production"
     assert client.get("/login").headers["Strict-Transport-Security"] == "max-age=31536000; includeSubDomains"
+
+
+def test_frame_ancestors_allows_configured_public_origins(security_app, monkeypatch):
+    monkeypatch.setenv("PLATFORM_FRAME_ANCESTORS", "https://portal.example.com,https://lms.example.edu")
+    client = security_app.test_client()
+    response = client.get("/login")
+    assert response.headers["X-Frame-Options"] == "SAMEORIGIN"
+    csp = response.headers["Content-Security-Policy"]
+    assert "frame-ancestors 'self' https://portal.example.com https://lms.example.edu" in csp
+
+
+def test_frame_ancestors_filters_unsafe_origins_but_keeps_safe_ones(security_app, monkeypatch):
+    # 混合列表中应过滤掉沙箱/内部/本地地址，但保留合法公开 origin。
+    monkeypatch.setenv(
+        "PLATFORM_FRAME_ANCESTORS",
+        "https://sandbox.internal.dev.cxiagents.com,https://localhost:5173,https://app.example.com",
+    )
+    client = security_app.test_client()
+    response = client.get("/login")
+    assert response.headers["X-Frame-Options"] == "SAMEORIGIN"
+    csp = response.headers["Content-Security-Policy"]
+    assert "frame-ancestors 'self' https://app.example.com" in csp
+    assert "sandbox.internal" not in csp
+    assert "localhost" not in csp

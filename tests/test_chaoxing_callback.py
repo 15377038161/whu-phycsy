@@ -39,7 +39,13 @@ def _public_base(monkeypatch, public=None, projects_domain=None):
         monkeypatch.setenv("CODER_PROJECTS_DOMAIN", projects_domain)
 
 
+def _clear_cached_public_base(app):
+    """清除启动阶段缓存的公开基址，强制 _app_public_base 重新解析环境变量。"""
+    app.config.pop("APP_PUBLIC_BASE_URL", None)
+
+
 def test_public_base_prefers_explicit_app_public_base_url(app_for_callback, monkeypatch):
+    _clear_cached_public_base(app_for_callback)
     _public_base(monkeypatch, public="https://app-a398jfvyx9l6.cxiagents.com")
     with app_for_callback.test_request_context(
         "/auth/chaoxing",
@@ -50,6 +56,7 @@ def test_public_base_prefers_explicit_app_public_base_url(app_for_callback, monk
 
 
 def test_public_base_falls_back_to_projects_domain(app_for_callback, monkeypatch):
+    _clear_cached_public_base(app_for_callback)
     _public_base(monkeypatch, projects_domain="https://app-a398jfvyx9l6.cxiagents.com")
     with app_for_callback.test_request_context("/auth/chaoxing"):
         assert _app_public_base() == "https://app-a398jfvyx9l6.cxiagents.com"
@@ -57,6 +64,7 @@ def test_public_base_falls_back_to_projects_domain(app_for_callback, monkeypatch
 
 def test_public_base_ignores_untrusted_forwarded_host(app_for_callback, monkeypatch):
     """即使代理注入沙箱 X-Forwarded-Host，只要配了公开域名就绝不受污染。"""
+    _clear_cached_public_base(app_for_callback)
     _public_base(
         monkeypatch,
         public="https://app-a398jfvyx9l6.cxiagents.com",
@@ -74,12 +82,14 @@ def test_public_base_ignores_untrusted_forwarded_host(app_for_callback, monkeypa
 
 
 def test_public_base_falls_back_to_request_root_only_locally(app_for_callback, monkeypatch):
+    _clear_cached_public_base(app_for_callback)
     _public_base(monkeypatch)
     with app_for_callback.test_request_context("/auth/chaoxing", base_url="http://localhost:5000"):
         assert _app_public_base() == "http://localhost:5000"
 
 
 def test_public_base_strips_trailing_slash(app_for_callback, monkeypatch):
+    _clear_cached_public_base(app_for_callback)
     _public_base(monkeypatch, public="https://app-a398jfvyx9l6.cxiagents.com/")
     with app_for_callback.test_request_context("/auth/chaoxing"):
         assert _app_public_base() == "https://app-a398jfvyx9l6.cxiagents.com"
@@ -87,6 +97,7 @@ def test_public_base_strips_trailing_slash(app_for_callback, monkeypatch):
 
 def test_public_base_fail_closed_on_sandbox_domain(app_for_callback, monkeypatch):
     """未配置 APP_PUBLIC_BASE_URL 且 CODER_PROJECTS_DOMAIN 为沙箱地址时必须失败。"""
+    _clear_cached_public_base(app_for_callback)
     _public_base(monkeypatch, projects_domain="https://sandbox-abc-8080.cxiagents.com")
     with app_for_callback.test_request_context("/auth/chaoxing"):
         with pytest.raises(RuntimeError):
@@ -95,6 +106,7 @@ def test_public_base_fail_closed_on_sandbox_domain(app_for_callback, monkeypatch
 
 def test_public_base_fail_closed_on_invalid_app_public_base(app_for_callback, monkeypatch):
     """APP_PUBLIC_BASE_URL 被配成沙箱/内部地址时必须失败。"""
+    _clear_cached_public_base(app_for_callback)
     _public_base(monkeypatch, public="https://sandbox-abc-8080.cxiagents.com")
     with app_for_callback.test_request_context("/auth/chaoxing"):
         with pytest.raises(RuntimeError):

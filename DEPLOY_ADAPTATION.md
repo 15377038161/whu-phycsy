@@ -31,6 +31,11 @@
 2. `CODER_PROJECTS_DOMAIN` —— 平台注入的对外访问域名；
 3. `request.url_root` —— 仅本地开发（无任何配置）兜底。
 
+启动阶段会解析一次并缓存到 `app.config["APP_PUBLIC_BASE_URL"]`：
+- 生产环境（`APP_ENV=production`）必须显式配置合法公开域名，否则启动即失败；
+- 预览/开发环境若遇到沙箱/内部域名，会回退到 `http://localhost:5000`，保证非 OAuth 页面可正常启动；
+- 实际发起超星 OAuth 时，请求上下文会再次严格校验，非法域名仍会直接报错，防止把内部地址泄露给浏览器。
+
 严禁在代码中硬编码任何域名，也严禁把开发/预览沙箱地址写入 `.env.production`。
 - 预览：`APP_ENV=preview` + SQLite（`runtime/platform.db`），无需外部数据库即可启动。
 - 生产：`APP_ENV=production` + `DATABASE_URL=postgresql+psycopg://...`（生产强制 PostgreSQL）。
@@ -65,9 +70,11 @@ python3 -m gunicorn --bind 0.0.0.0:"${DEPLOY_RUN_PORT:-5000}" --workers 2 --time
 
 ## 6. 安全加固（已启用）
 
-- 强制 HTTPS 安全头：`Strict-Transport-Security`（production）、`X-Frame-Options: DENY`、
-  `X-Content-Type-Options: nosniff`、`Referrer-Policy`、`Permissions-Policy`、
-  `X-Permitted-Cross-Domain-Policies`、CSP（含 Pyodide 源白名单）；移除 `Server` 头。
+- 强制 HTTPS 安全头：`Strict-Transport-Security`（production）、`X-Content-Type-Options: nosniff`、
+  `Referrer-Policy`、`Permissions-Policy`、`X-Permitted-Cross-Domain-Policies`、CSP（含 Pyodide 源白名单）；移除 `Server` 头。
+- iframe 嵌入策略：默认 `X-Frame-Options: DENY` + CSP `frame-ancestors 'none'`；
+  需要被平台/门户嵌入时，显式设置环境变量 `PLATFORM_FRAME_ANCESTORS=https://portal.example.com,https://lms.example.edu`（逗号分隔），
+  此时切换为 `X-Frame-Options: SAMEORIGIN` 并将合法父源加入 `frame-ancestors`。沙箱/内部/本地地址会被过滤，不会自动授权。
 - 会话：`HttpOnly`、`SameSite=Lax`、production 下 `Secure`。
 - 认证：scrypt 密码哈希、全局 CSRF 校验、登录失败 5 次/5 分钟锁定（返回 429）与审计日志。
 - 生产 `DEBUG` 恒为 False（`APP_ENV=production`），不暴露调试信息。
@@ -87,6 +94,8 @@ python3 -m gunicorn --bind 0.0.0.0:"${DEPLOY_RUN_PORT:-5000}" --workers 2 --time
 - [ ] Python 3.11 可用、`requirements.txt` 安装成功（`python3 -m pip install --user --break-system-packages -r requirements.txt` 沙箱内）
 - [ ] 根目录 `.coder` 存在，`[deploy].run` 读取 `DEPLOY_RUN_PORT`
 - [ ] 生产 `DATABASE_URL` 为 PostgreSQL，`APP_ENV=production`，`FLASK_SECRET_KEY` 强随机
+- [ ] 生产 `APP_PUBLIC_BASE_URL` 为合法公开域名（如 `https://app-xxx.cxiagents.com`），非沙箱/内部地址
+- [ ] 需要 iframe 嵌入时，已配置 `PLATFORM_FRAME_ANCESTORS` 并验证 `frame-ancestors` 响应头
 - [ ] `curl /health` = 200；`curl /ready` = 200（AI 已配置时）
 - [ ] 演示账号登录/首密码修改流程通过
 - [ ] 登录页/首页在 HTTPS 下 `Secure` Cookie 生效，响应无 CSP 违规

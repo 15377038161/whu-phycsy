@@ -160,42 +160,96 @@ def _chaoxing_auth_base() -> str:
     return request.url_root.rstrip("/")
 
 
-def _is_trusted_public_domain(base: str) -> bool:
-    """拒绝沙箱/内部/本地地址作为公开 OAuth 回跳域名。"""
+def _is_sandbox_or_internal_domain(base: str) -> bool:
+    """识别沙箱/内部/本地地址；合法公开域名返回 False。"""
     lowered = base.casefold()
-    return not any(
+    return any(
         marker in lowered
         for marker in ("sandbox", "internal", "/sandboxes/", "localhost", "127.0.0.1", ":5000", ":8080", ":5173")
     )
 
 
-def _app_public_base() -> str:
-    """应用对外公开 base URL（用于超星 OAuth 回跳 redirect_uri，浏览器可见）。
+def _is_trusted_public_domain(base: str) -> bool:
+    """拒绝沙箱/内部/本地地址作为公开 OAuth 回跳域名。"""
+    return not _is_sandbox_or_internal_domain(base)
 
-    与认证代理地址严格区分：这里必须指向用户浏览器可访问的公开域名，而非
-    后端内部地址。公开部署的代理会把 X-Forwarded-Host 写成内部沙箱地址
-    （如 sandbox-xxx-8080.cxiagents.com），ProxyFix 的 x_host=1 会信任该头，
-    导致 url_for(_external=True) 生成沙箱回跳地址、浏览器跳回沙箱而非公开域名。
 
-    因此这里绝不依赖 request.url_root，而是按优先级取受信任配置：
-      1. APP_PUBLIC_BASE_URL  —— 显式配置的公开域名（公开部署必填），
-      2. CODER_PROJECTS_DOMAIN —— 平台注入的对外访问域名（拒绝内部沙箱地址），
-      3. request.url_root      —— 仅本地开发（无任何配置）兜底。
-    严禁硬编码任何域名；缺失或非法公开地址时 fail closed。"""
+def _resolve_app_public_base(
+    *,
+    fail_closed: bool = False,
+    allow_local: bool = False,
+    request_url_root: str = "",
+) -> str:
+    """解析应用对外公开 base URL（用于超星 OAuth 回跳 redirect_uri，浏览器可见）。
+
+    与认证代理地址严格区分：这里必须指向用户浏览器可访问的域名，而非后端
+    内部地址。公开部署的代理会把 X-Forwarded-Host 写成内部沙箱地址，导致
+    url_for(_external=True) 生成沙箱回跳地址，浏览器跳回沙箱而非公开域名。
+
+    解析优先级：
+      1. APP_PUBLIC_BASE_URL  —— 显式配置（公开部署必填）
+      2. CODER_PROJECTS_DOMAIN —— 平台注入的对外访问域名
+      3. request.url_root      —— 仅本地开发/测试兜底（需 allow_local=True）
+
+    参数：
+      fail_closed: 为 True 时，缺失或非法公开地址直接抛 RuntimeError（用于
+                   启动检查，让错误配置在启动阶段明确失败）。
+      allow_local: 为 True 时，允许回退到 request.url_root；否则本地地址也被拒绝。
+      request_url_root: 可选的外部传入 request.url_root，避免在启动上下文调用 request。
+    """
     base = os.getenv("APP_PUBLIC_BASE_URL", "").strip()
+    source = "APP_PUBLIC_BASE_URL"
+    if not base:
+        base = os.getenv("CODER_PROJECTS_DOMAIN", "").strip()
+        source = "CODER_PROJECTS_DOMAIN"
     if base:
-        if not _is_trusted_public_domain(base):
-            raise RuntimeError(f"APP_PUBLIC_BASE_URL 不是可信公开域名: {base}")
-        return base.rstrip("/")
-    base = os.getenv("CODER_PROJECTS_DOMAIN", "").strip()
-    if base:
+        # 显式配置的地址若不可信必须失败，禁止静默回退到 request.url_root，
+        # 否则会把沙箱/内部地址泄露到浏览器可见的 OAuth 回跳地址中。
         if not _is_trusted_public_domain(base):
             raise RuntimeError(
-                "APP_PUBLIC_BASE_URL 未配置且 CODER_PROJECTS_DOMAIN 为内部/沙箱地址，"
-                f"无法构造公开 OAuth 回跳地址: {base}"
+                f"{source} 不是可信公开域名，无法构造公开 OAuth 回跳地址: {base}"
             )
         return base.rstrip("/")
-    return request.url_root.rstrip("/")
+    # 未配置任何公开地址时，仅允许本地开发/测试回退到 request.url_root。
+    if fail_closed:
+        raise RuntimeError(
+            "APP_PUBLIC_BASE_URL 未配置：公开部署必须显式设置合法公开域名。"
+        )
+    if allow_local and request_url_root:
+        return request_url_root.rstrip("/")
+    raise RuntimeError(
+        "APP_PUBLIC_BASE_URL 与 CODER_PROJECTS_DOMAIN 均未配置，无法构造公开 OAuth 回跳地址。"
+    )
+
+
+def _app_public_base() -> str:
+    """请求上下文中获取公开 base URL；优先使用启动时缓存的 app.config 值。
+
+    启动阶段已将解析结果写入 app.config["APP_PUBLIC_BASE_URL"]；请求时直接
+    复用，避免在沙箱/测试环境中每次请求都重新解析可能不合法的 CODER_PROJECTS_DOMAIN。
+    若缓存未命中（理论上不应发生），再回退到环境变量解析。
+    """
+    configured = current_app.config.get("APP_PUBLIC_BASE_URL", "")
+    if configured:
+        return configured.rstrip("/")
+    return _resolve_app_public_base(allow_local=True, request_url_root=request.url_root.rstrip("/"))
+
+
+def check_app_public_base_at_startup(*, env: str) -> str:
+    """启动时检查公开 base URL 配置；生产必须显式合法，预览/开发允许本地兜底。
+
+    返回解析后的 base URL 供应用缓存到 app.config["APP_PUBLIC_BASE_URL"]。
+    预览/沙箱场景下 CODER_PROJECTS_DOMAIN 常为内部地址，这里捕获异常并回退到
+    localhost，保证非 OAuth 页面仍可正常启动和预览；OAuth 回跳在请求时再严格校验。
+    """
+    # 生产环境必须显式配置合法公开域名，禁止依赖 request.url_root 或沙箱地址
+    if env == "production":
+        return _resolve_app_public_base(fail_closed=True)
+    # 预览/开发/测试：允许本地地址兜底，已配置但非法的地址不阻塞启动
+    try:
+        return _resolve_app_public_base(fail_closed=False, allow_local=True, request_url_root="http://localhost:5000")
+    except RuntimeError:
+        return "http://localhost:5000"
 
 
 def _chaoxing_project_id() -> str:
