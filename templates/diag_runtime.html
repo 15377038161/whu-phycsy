@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>运行版本诊断</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='quantum-platform.css') }}">
+</head>
+<body class="diag-page">
+  <main class="diag-container">
+    <h1 class="diag-title">运行版本诊断</h1>
+    <p class="diag-note">以下结果仅包含运行时可自证的固定枚举与文件哈希，不输出密钥、JWT、用户标识或原始错误。</p>
+
+    <table class="diag-table" border="1" cellpadding="6">
+      <thead>
+        <tr><th>字段</th><th>值</th></tr>
+      </thead>
+      <tbody>
+        {% for key, value in payload.items() %}
+        <tr>
+          <td>{{ key|e }}</td>
+          <td>
+            {% if value is mapping %}
+              <table class="diag-subtable" border="1" cellpadding="4">
+                <tbody>
+                  {% for sub_key, sub_value in value.items() %}
+                  <tr>
+                    <td>{{ sub_key|e }}</td>
+                    <td>
+                      {% if sub_value is none %}
+                        <em>null</em>
+                      {% else %}
+                        <code>{{ sub_value|e }}</code>
+                      {% endif %}
+                    </td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            {% elif value is none %}
+              <em>null</em>
+            {% else %}
+              <code>{{ value|e }}</code>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <button class="diag-button" onclick="history.back()">返回</button>
+  </main>
+</body>
+</html>

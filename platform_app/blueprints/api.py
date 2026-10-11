@@ -340,22 +340,25 @@ def diag_runtime():
 
     The response proves which code path is actually loaded, how AI is
     configured, and whether the current JWT can see any enrollment rows.
-    No secrets, paths, hostnames, URLs, JWT claims, user lists, or raw
-    exception text are emitted.
+    No secrets, paths, hostnames, URLs, JWT claims, user lists, raw
+    exception text, or business identifiers are emitted.
 
     CSRF protection is enforced by the global `protect_state_changes` hook in
     `platform_app/__init__.py`; this endpoint does not accept anonymous requests.
     """
-    payload = runtime_diagnostic_payload()
+    access_token, error = _current_valid_token()
+    if error:
+        return _diag_response(error)
+
+    user, _error = _verify_access_token(access_token)
+    if user is None:
+        return _diag_response("invalid")
+
+    auth_uid = str(user.get("id") or "")
+    if not auth_uid:
+        return _diag_response("invalid")
+
+    payload = runtime_diagnostic_payload(token=access_token, auth_uid=auth_uid)
     if "text/html" in request.accept_mimetypes:
-        rows = "".join(f"<tr><td>{k}</td><td><code>{v}</code></td></tr>" for k, v in payload.items())
-        html = (
-            "<!doctype html><html lang=\"zh-CN\">"
-            "<head><meta charset=\"utf-8\"><title>运行版本诊断</title></head>"
-            "<body><h1>运行版本诊断</h1>"
-            "<table border=\"1\" cellpadding=\"6\"><tr><th>字段</th><th>值</th></tr>"
-            f"{rows}</table>"
-            "<button onclick=\"history.back()\">返回</button></body></html>"
-        )
-        return Response(html, content_type="text/html; charset=utf-8")
+        return render_template("diag_runtime.html", payload=payload)
     return jsonify(payload)
