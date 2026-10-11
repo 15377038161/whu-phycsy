@@ -164,6 +164,49 @@ $ python3 -m pytest tests/test_chaoxing_callback.py tests/test_chaoxing_token_se
 
 ---
 
+## Round 4：移除超星 SSO 学生默认自动入课，修复未授权访问边界
+
+### 目标
+
+- 移除 `chaoxing_callback` 中学生首次登录无 enrollment 时自动加入最早课程的逻辑。
+- 学生课程成员关系必须仅由教师通过学生管理/名单导入显式授权。
+- 保留正常登录流程：已有 enrollment 的学生/教师 SSO 登录后仍可进入对应首页。
+- 不修改远端 RLS、角色、已有业务数据；仅做 `auth.py` 局部安全修复。
+
+### 根因
+
+原代码在 `chaoxing_callback` 中判断学生无 enrollment 时，自动查询最早课程并写入一条 `Enrollment` 记录。这会导致任何首次通过超星 SSO 登录的学生默认进入系统课程，绕过教师授权，存在跨课程/未授权访问风险。
+
+### 修改文件
+
+| 文件 | 改动摘要 |
+|------|----------|
+| `platform_app/blueprints/auth.py` | 删除自动加入最早课程的 `Enrollment` 创建逻辑；改为：学生无 enrollment 时 flash 提示并跳转回登录页，不建立已登录会话 |
+| `tests/test_chaoxing_token_session.py` | 新增/调整 3 个回归测试：无 enrollment 学生被拒绝且不写入 enrollment、已有 enrollment 学生正常登录且关系不变、仅授权 course1 时不会自动加入 course2；token 存储与注销测试改用教师身份，避免受 enrollment 规则影响 |
+| `AGENTS.md` | 补充“学生课程成员关系必须由教师显式授权；超星 SSO 不再自动加入默认课程” |
+| `docs/CHAOXING_CODER_PLAYBOOK.md` | 在“认证与权限边界”中记录 enrollment 授权规则与无 enrollment 登录行为 |
+| `TEACHER_LOCAL_DEPLOYMENT_GUIDE.md` | `enrollments` 表“正常修改方式”增加“超星 SSO 不会自动创建” |
+| `docs/DELIVERY_ACCEPTANCE.md` | 本文件 |
+
+### 测试结果
+
+```text
+$ python3 -m pytest tests/test_chaoxing_token_session.py tests/test_chaoxing_callback.py -v
+============================== 30 passed in 8.29s ==============================
+```
+
+新增/调整关键测试：
+- `test_sso_student_without_enrollment_is_rejected`：无 enrollment 学生 SSO 登录后跳转 `/login`，不建立 `user_id` 会话，不为该 SSO 用户创建 enrollment。
+- `test_sso_student_with_existing_enrollment_keeps_it`：通过学号元数据匹配到已导入名单的学生，已有 enrollment 正常登录，enrollment 不变，不额外创建 `cx_` 账号。
+- `test_sso_student_does_not_auto_join_second_course`：学生仅被授权加入 course1 时，SSO 登录不会自动加入 course2。
+
+### 部署状态
+
+- 本变更仅涉及本地 SQLite 业务逻辑，不修改 Supabase RLS/角色/已有数据。
+- 建议部署前确认：公开实例 `runtime/` 持久化契约；否则 SQLite 数据仍可能跨部署丢失。
+
+---
+
 ## 已知阻塞（需用户/平台确认）
 
 1. **公开实例 SQLite/上传目录跨部署是否持久化**——确认前不应覆盖线上。

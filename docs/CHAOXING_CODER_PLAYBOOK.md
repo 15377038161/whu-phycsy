@@ -44,6 +44,9 @@
 
 - 身份认定**不再依赖本地未验签 decode JWT**，改由 Supabase Auth `/auth/v1/user` 返回的 `user_metadata.cxid` / `realname`。
 - `access_token` / `refresh_token` 只写入服务端 `app_sessions.data`，不进入 URL、不写入浏览器可读 cookie、不输出日志。
+- 学生课程成员关系（`enrollments`）必须由教师通过学生管理/名单导入显式授权；超星 SSO 不再自动加入任何默认课程。
+  - 无 enrollment 的学生首次登录时，系统提示“你尚未被加入任何课程”并跳转回登录页，不建立已登录会话。
+  - 已存在 enrollment 的学生 SSO 登录后正常进入学生首页，且 enrollment 不会被修改或扩展。
 - 注销（`/logout`）执行 `session.clear()`，一并清除令牌。
 
 ### 2.2 下游 Data API 契约

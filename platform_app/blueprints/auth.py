@@ -621,14 +621,14 @@ def chaoxing_callback():
             # 存量账号若此前被识别为学生、而超星元数据已确认为教师，自动升级角色
             if user.role == "student" and detected_role == "teacher":
                 user.role = "teacher"
-        # 超星 SSO 学生默认加入系统课程：确保登录后能正常选关、进入实验。
-        # 仅当该学生尚未加入任何课程时自动补一条选课记录，避免与教师手动导入冲突。
-        if user.role == "student":
-            existing = db.scalar(select(Enrollment).where(Enrollment.student_id == user.id))
-            if existing is None:
-                default_course = db.scalar(select(Course).order_by(Course.created_at, Course.id))
-                if default_course is not None:
-                    db.add(Enrollment(course_id=default_course.id, student_id=user.id))
+        # 学生课程成员关系必须由教师通过学生管理/名单导入显式授权。
+        # 超星 SSO 不再自动加入任何默认课程，避免未授权访问或跨课程误绑定。
+        if user.role == "student" and not db.scalar(
+            select(Enrollment).where(Enrollment.student_id == user.id)
+        ):
+            flash("你尚未被加入任何课程，请联系任课教师导入名单后再登录。", "error")
+            # 保留匿名会话以承载 flash 提示；不建立已登录会话，避免无课程用户进入业务页。
+            return _public_redirect("auth.login")
         db.add(AuditEvent(
             actor_id=user.id,
             action="login.chaoxing",

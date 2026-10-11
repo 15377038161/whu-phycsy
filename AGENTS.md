@@ -37,6 +37,9 @@
 - 身份映射：超星 OAuth 登录成功后，服务端把 Supabase `access_token` / `refresh_token` 存入服务端
   `app_sessions` 表（不在 URL/前端/日志中暴露），并通过 `auth_get_user()` 实时校验；`auth.uid()`
   与本地 `User` 的映射依据为 `user_metadata.cxid` ↔ `User.chaoxing_cxid`（cxid 是超星用户标识）。
+- 学生课程成员关系（`enrollments`）**必须由教师通过学生管理/名单导入显式授权**；超星 SSO 首次登录
+  不再自动加入任何默认课程。若学生无 enrollment，登录流程会保留匿名会话并提示“你尚未被加入任何课程”，
+  不建立已登录会话，避免未授权访问或跨课程误绑定。
 - 服务端诊断端点（仅已登录用户可访问，受全局 CSRF 保护）：
   - `POST /api/diag/auth`：使用当前会话中的用户 JWT 调用 `/auth/v1/user`，返回环境状态、认证状态、
     脱敏后的 `auth.uid()` 与本地用户映射关系，不返回 token 或完整 JWT。

@@ -231,7 +231,7 @@ AI_READY_TTL_SECONDS=300
 | `courses` | `name` | 班级名称 | 教师端学生管理 |
 | `courses` | `created_at` | 创建时间 | 系统自动写入 |
 | `enrollments` | `id` | 选课关系主键 | 系统生成 |
-| `enrollments` | `course_id`、`student_id` | 班级与学生关系，组合唯一 | 名册导入/班级管理 |
+| `enrollments` | `course_id`、`student_id` | 班级与学生关系，组合唯一 | 名册导入/班级管理；超星 SSO 不会自动创建 |
 | `course_experiments` | `course_id`、`experiment_id` | 班级可见实验关系 | 实验发布和班级初始化 |
 | `course_experiments` | `position` | 班级内排序 | 实验管理 |
 | `course_experiments` | `active` | 是否向该班级开放 | 发布/下架操作 |
