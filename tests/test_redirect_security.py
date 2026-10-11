@@ -2,11 +2,14 @@
 
 Coverage:
   1. propagate_sid converts root-relative redirects to same-origin absolute URLs
-     and appends the _sid ticket.
-  2. External absolute / protocol-relative redirects do not receive _sid.
-  3. Same-origin absolute redirects keep _sid.
-  4. Missing public base configuration causes fail-closed (no _sid).
-  5. The boundary is not bypassed by a hostile Host / X-Forwarded-Host header.
+     and appends the _sid ticket at the query level.
+  2. Non-same-origin locations have any existing _sid query parameter removed
+     and do not receive the current _sid.
+  3. Same-origin redirects preserve query strings, fragments and parameters whose
+     values accidentally contain the literal "_sid=".
+  4. Protocol-relative, userinfo, control-character, backslash and malformed
+     URLs are rejected for ticket propagation.
+  5. Host / X-Forwarded-Host manipulation does not change the resolved origin.
 """
 from __future__ import annotations
 
@@ -38,6 +41,14 @@ def redirect_app(tmp_path, monkeypatch):
     def test_redirect_query():
         return redirect("/student/home?foo=bar")
 
+    @app.get("/test-redirect-fragment")
+    def test_redirect_fragment():
+        return redirect("/student/home#section")
+
+    @app.get("/test-redirect-param-with-sid-substring")
+    def test_redirect_param_with_sid_substring():
+        return redirect("/student/home?callback=foo_sid=bar&baz=1")
+
     @app.get("/test-redirect-absolute")
     def test_redirect_absolute():
         return redirect("https://app.example.edu.cn/student/home")
@@ -46,9 +57,33 @@ def redirect_app(tmp_path, monkeypatch):
     def test_redirect_external():
         return redirect("https://evil.example.com/callback")
 
+    @app.get("/test-redirect-external-with-sid")
+    def test_redirect_external_with_sid():
+        return redirect("https://evil.example.com/callback?_sid=stolen&foo=bar")
+
     @app.get("/test-redirect-protocol-relative")
     def test_redirect_protocol_relative():
         return redirect("//evil.example.com/callback")
+
+    @app.get("/test-redirect-protocol-relative-with-sid")
+    def test_redirect_protocol_relative_with_sid():
+        return redirect("//evil.example.com/callback?_sid=stolen&foo=bar")
+
+    @app.get("/test-redirect-http-scheme-mismatch")
+    def test_redirect_http_scheme_mismatch():
+        return redirect("http://app.example.edu.cn/student/home")
+
+    @app.get("/test-redirect-port-mismatch")
+    def test_redirect_port_mismatch():
+        return redirect("https://app.example.edu.cn:8443/student/home")
+
+    @app.get("/test-redirect-userinfo")
+    def test_redirect_userinfo():
+        return redirect("https://user:pass@app.example.edu.cn/student.home?_sid=stolen")
+
+    @app.get("/test-redirect-backslash")
+    def test_redirect_backslash():
+        return redirect("https://evil.example.com/\\student/home?_sid=stolen")
 
     return app
 
@@ -63,7 +98,6 @@ def _extract_sid(location: str) -> str | None:
 
 def test_propagate_sid_converts_root_relative_to_absolute(redirect_app):
     with redirect_app.test_client() as client:
-        # Establish a session so the client has a stable sid.
         client.get("/health")
         resp = client.get("/test-redirect-root")
 
@@ -85,7 +119,34 @@ def test_propagate_sid_preserves_query_string(redirect_app):
     assert location.startswith("https://app.example.edu.cn/student/home")
     assert "foo=bar" in location
     assert "_sid=" in location
-    assert "&" in location or "?_sid=" not in location  # _sid appended after existing query
+    # Existing query comes before the appended _sid.
+    assert "?foo=bar&_sid=" in location or "?foo=bar&amp;_sid=" in location
+
+
+def test_propagate_sid_preserves_fragment(redirect_app):
+    with redirect_app.test_client() as client:
+        client.get("/health")
+        resp = client.get("/test-redirect-fragment")
+
+    assert resp.status_code == 302
+    location = resp.headers["Location"]
+    assert location.startswith("https://app.example.edu.cn/student/home")
+    assert "_sid=" in location
+    assert location.endswith("#section")
+
+
+def test_propagate_sid_does_not_misread_sid_in_param_value(redirect_app):
+    """A parameter value containing the literal '_sid=' must not be treated as the ticket."""
+    with redirect_app.test_client() as client:
+        client.get("/health")
+        resp = client.get("/test-redirect-param-with-sid-substring")
+
+    assert resp.status_code == 302
+    location = resp.headers["Location"]
+    assert "callback=foo_sid%3Dbar" in location or "callback=foo_sid=bar" in location
+    assert "baz=1" in location
+    sid = _extract_sid(location)
+    assert sid and sid != "bar"
 
 
 def test_propagate_sid_allows_same_origin_absolute(redirect_app):
@@ -110,6 +171,17 @@ def test_propagate_sid_rejects_external_absolute(redirect_app):
     assert "_sid=" not in location
 
 
+def test_propagate_sid_strips_existing_sid_from_external_absolute(redirect_app):
+    with redirect_app.test_client() as client:
+        client.get("/health")
+        resp = client.get("/test-redirect-external-with-sid")
+
+    assert resp.status_code == 302
+    location = resp.headers["Location"]
+    assert location == "https://evil.example.com/callback?foo=bar"
+    assert "_sid=" not in location
+
+
 def test_propagate_sid_rejects_protocol_relative(redirect_app):
     with redirect_app.test_client() as client:
         client.get("/health")
@@ -119,6 +191,67 @@ def test_propagate_sid_rejects_protocol_relative(redirect_app):
     location = resp.headers["Location"]
     assert location == "//evil.example.com/callback"
     assert "_sid=" not in location
+
+
+def test_propagate_sid_strips_existing_sid_from_protocol_relative(redirect_app):
+    with redirect_app.test_client() as client:
+        client.get("/health")
+        resp = client.get("/test-redirect-protocol-relative-with-sid")
+
+    assert resp.status_code == 302
+    location = resp.headers["Location"]
+    assert location == "//evil.example.com/callback?foo=bar"
+    assert "_sid=" not in location
+
+
+def test_propagate_sid_rejects_http_scheme_mismatch(redirect_app):
+    with redirect_app.test_client() as client:
+        client.get("/health")
+        resp = client.get("/test-redirect-http-scheme-mismatch")
+
+    assert resp.status_code == 302
+    location = resp.headers["Location"]
+    assert location == "http://app.example.edu.cn/student/home"
+    assert "_sid=" not in location
+
+
+def test_propagate_sid_rejects_port_mismatch(redirect_app):
+    with redirect_app.test_client() as client:
+        client.get("/health")
+        resp = client.get("/test-redirect-port-mismatch")
+
+    assert resp.status_code == 302
+    location = resp.headers["Location"]
+    assert location == "https://app.example.edu.cn:8443/student/home"
+    assert "_sid=" not in location
+
+
+def test_propagate_sid_rejects_userinfo(redirect_app):
+    with redirect_app.test_client() as client:
+        client.get("/health")
+        resp = client.get("/test-redirect-userinfo")
+
+    assert resp.status_code == 302
+    location = resp.headers["Location"]
+    # Malformed / unsafe URL is left untouched; the app should not generate it.
+    assert "user:pass" in location
+    assert "_sid=stolen" in location
+
+
+def test_propagate_sid_rejects_backslash(redirect_app):
+    with redirect_app.test_client() as client:
+        client.get("/health")
+        resp = client.get("/test-redirect-backslash")
+
+    assert resp.status_code == 302
+    location = resp.headers["Location"]
+    # Flask normalizes the literal backslash to %5C before the after_request hook sees it.
+    # We treat the URL as unsafe and leave it untouched, so the existing stolen _sid remains
+    # and the location is not rewritten to the app origin or signed with a new ticket.
+    assert "evil.example.com" in location
+    assert "%5C" in location or "\\" in location
+    assert "_sid=stolen" in location
+    assert "app.example.edu.cn" not in location
 
 
 def test_propagate_sid_missing_public_base_fail_closed(tmp_path, monkeypatch):

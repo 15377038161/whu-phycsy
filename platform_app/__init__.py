@@ -5,7 +5,7 @@ import secrets
 from hmac import compare_digest
 from pathlib import Path
 from threading import Lock
-from urllib.parse import urlsplit
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from dotenv import load_dotenv
 from flask import Flask, abort, request, session
@@ -184,27 +184,74 @@ def create_app(test_config: dict | None = None) -> Flask:
             return False
         return True
 
-    def _same_origin_redirect_url(location: str, public_base: str) -> str | None:
-        """将重定向 Location 解析为与 public_base 同源的绝对 URL。
+    def _is_same_origin(location: str, public_base: str) -> bool:
+        """严格校验 location 与 public_base 同源（scheme/hostname/port）。
 
-        - 根相对路径：拼接 public_base 后校验同源。
-        - 绝对 URL：直接校验同源（用于 OAuth 等已有绝对地址场景）。
-        - 协议相对 URL（//...）或无法识别的路径：拒绝，返回 None。
+        拒绝 userinfo、空 scheme/netloc、异常端口和协议差异。location 必须是已解析的
+        绝对 URL。
+        """
+        parsed = urlsplit(location)
+        if parsed.username is not None or parsed.password is not None:
+            return False
+        if not parsed.scheme or not parsed.netloc:
+            return False
+        if parsed.scheme not in {"http", "https"}:
+            return False
+        base = urlsplit(public_base)
+        if parsed.scheme != base.scheme:
+            return False
+        if (parsed.hostname or "").casefold() != (base.hostname or "").casefold():
+            return False
+        if (parsed.port or _default_port(parsed.scheme)) != (base.port or _default_port(base.scheme)):
+            return False
+        return True
 
-        返回 None 表示不应附加票据；调用方应保持原 Location 不变。
+    def _set_sid_in_query(location: str, sid: str | None) -> str:
+        """在 URL query 级别添加或移除 _sid，保留其它参数、顺序、path 和 fragment。"""
+        parsed = urlsplit(location)
+        qs = [(k, v) for k, v in parse_qsl(parsed.query, keep_blank_values=True) if k != "_sid"]
+        if sid is not None:
+            qs.append(("_sid", sid))
+        return urlunsplit((parsed.scheme, parsed.netloc, parsed.path, urlencode(qs), parsed.fragment))
+
+    def _sanitize_redirect(location: str, public_base: str) -> tuple[str, bool] | None:
+        """解析并重定向 Location，返回 (处理后的 Location, 是否同源)。
+
+        - 根相对路径：拼接 public_base 后判断同源；同源则返回绝对 URL，否则仅移除
+          可能存在的 _sid 后返回原根相对 URL。
+        - 协议相对 URL（//host/...）：按 public_base 的 scheme 解析并判断同源；非同源
+          时仅移除 _sid 后返回原协议相对 URL。
+        - 绝对 URL：直接判断同源；非同源时移除 _sid。
+        - 控制字符、反斜杠、userinfo、未知 scheme 返回 None，表示无法安全重写，
+          保持原 Location 不变（应用不应生成这类地址）。
         """
         if not location:
             return None
+        if "\\" in location or "\x00" in location or any(ord(ch) < 32 for ch in location):
+            return None
+        parsed = urlsplit(location)
+        if parsed.username is not None or parsed.password is not None:
+            return None
+        base = urlsplit(public_base)
+
         if location.startswith("//"):
-            return None
+            canonical = f"{base.scheme}://{location[2:]}"
+            if _is_same_origin(canonical, public_base):
+                return _set_sid_in_query(canonical, None), True
+            return _set_sid_in_query(location, None), False
+
         if location.startswith("/"):
-            absolute = public_base.rstrip("/") + location
-        elif location.startswith(("http://", "https://")):
-            absolute = location
-        else:
-            return None
-        if _is_app_origin(absolute, public_base):
-            return absolute
+            canonical = public_base.rstrip("/") + location
+            if _is_same_origin(canonical, public_base):
+                return _set_sid_in_query(canonical, None), True
+            return _set_sid_in_query(location, None), False
+
+        if location.startswith(("http://", "https://")):
+            if _is_same_origin(location, public_base):
+                return _set_sid_in_query(location, None), True
+            return _set_sid_in_query(location, None), False
+
+        # 其它 scheme（mailto:, javascript: 等）不处理，保持原样。
         return None
 
     @app.after_request
@@ -221,7 +268,9 @@ def create_app(test_config: dict | None = None) -> Flask:
           Host / X-Forwarded-Host / X-Forwarded-Prefix；
         - 根相对 Location 会先拼接为 public_base 下的绝对 URL，避免代理把内部路由前缀
           （如 /sandboxes/<id>/proxy/<port>）重写到浏览器可见地址；
-        - 外站 / 协议相对 / 非同源绝对跳转均不附加票据，防止 _sid 泄露。
+        - 对非同源地址不附加新票据，且会先移除 Location 中已存在的 _sid 参数，
+          防止会话票据随外站/协议相对跳转泄露；
+        - 拒绝控制字符、反斜杠、userinfo 和未知 scheme。
 
         注意：普通业务请求（非重定向）直接返回，不在 after_request 中解析公开基址，
         避免 OAuth 基址配置错误污染正常页面响应。
@@ -230,17 +279,20 @@ def create_app(test_config: dict | None = None) -> Flask:
         if not sid or response.status_code not in {301, 302, 303, 307, 308}:
             return response
         location = response.headers.get("Location", "")
-        if not location or "_sid=" in location:
+        if not location:
             return response
         # 使用启动时解析并缓存的公开基址；缺失时 fail closed，不传播票据。
         public_base = app.config.get("APP_PUBLIC_BASE_URL", "")
         if not public_base:
             return response
-        safe_url = _same_origin_redirect_url(location, public_base)
-        if safe_url is None:
+        result = _sanitize_redirect(location, public_base)
+        if result is None:
             return response
-        sep = "&" if "?" in safe_url else "?"
-        response.headers["Location"] = f"{safe_url}{sep}_sid={sid}"
+        sanitized, is_same_origin = result
+        if is_same_origin:
+            response.headers["Location"] = _set_sid_in_query(sanitized, sid)
+        else:
+            response.headers["Location"] = sanitized
         return response
 
     @app.before_request
