@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import os
 import time
 from functools import wraps
@@ -354,54 +353,14 @@ def _refresh_access_token(refresh_token: str) -> tuple[dict | None, str | None]:
     return resp.json(), None
 
 
-# 教师身份自动识别：从超星用户元数据中提取「身份类型 / 单位号」判定角色。
-# 超星 token 的 user_metadata 字段命名不稳定，这里做多字段兼容 + 关键词匹配。
-_TEACHER_UNIT_CODES = {"1385"}  # 武汉大学单位号（教师类）
-# 教师/管理员类关键词：覆盖「教师」与「管理员/admin」两类身份，避免管理员被误判为学生。
-_TEACHER_IDENTITY_KEYWORDS = (
-    "teacher", "教师", "老师", "讲师", "教授", "助教", "职工", "教职工",
-    "admin", "administrator", "管理员", "教务", "教学管理", "辅导员",
-)
-# 学生类反向关键词：命中则排除教师判定（优先于教师关键词）。
-_STUDENT_IDENTITY_KEYWORDS = ("student", "学生", "本科生", "研究生", "博士生", "硕士生")
-
-
 def _detect_chaoxing_role(metadata: dict, claims: dict) -> str:
-    """判定超星用户角色：命中教师/管理员身份特征返回 'teacher'，否则 'student'。
+    """超星 SSO 默认角色固定为 'student'。
 
-    兼容多种可能的字段名（unitid/schoolid/type/role/identity/position/jobtitle 等），
-    命中任一「教师/管理员类关键词」或「单位号在教师白名单」即判为教师；若同时命中
-    学生关键词则保留学生判定，避免将「学生干部/助教学生」误判为教师。
+    教师身份仅由本地数据库的合法授权记录决定（users.role='teacher' 且 active=True）。
+    user_metadata、单位号、自由关键词均不可用于授予或升级教师角色，防止用户通过
+    可编辑元数据越权获得教师权限。后续若引入官方不可用户编辑的 app_metadata 角色
+    源，需有明确契约证据并单独评审后再扩展此处。
     """
-    merged = {**claims, **metadata}
-
-    # 1) 单位号白名单：超星教师单位号 1385
-    for key in ("unitid", "unit_id", "unitId", "schoolid", "school_id", "schoolId", "fid", "orgid"):
-        value = str(merged.get(key) or "").strip()
-        if value and value in _TEACHER_UNIT_CODES:
-            return "teacher"
-
-    # 2) 身份类型字段关键词：teacher / 教师 / 管理员 / admin 等
-    identity_keys = (
-        "type", "usertype", "user_type", "role", "roles", "identity", "identity_type",
-        "identityType", "position", "position_name", "jobtitle", "job_title", "jobTitle",
-        "duty", "title", "category", "group", "usertype_name", "role_name",
-    )
-    hit_teacher = False
-    hit_student = False
-    for key in identity_keys:
-        value = merged.get(key)
-        if value is None:
-            continue
-        text = value if isinstance(value, str) else json.dumps(value, ensure_ascii=False)
-        lowered = text.casefold()
-        if any(keyword.casefold() in lowered for keyword in _STUDENT_IDENTITY_KEYWORDS):
-            hit_student = True
-        if any(keyword.casefold() in lowered for keyword in _TEACHER_IDENTITY_KEYWORDS):
-            hit_teacher = True
-    if hit_teacher and not hit_student:
-        return "teacher"
-
     return "student"
 
 
@@ -573,11 +532,11 @@ def chaoxing_callback():
         flash("未能获取超星身份信息，请联系管理员。", "error")
         return _public_redirect("auth.login")
 
-    # 教师身份自动识别：从超星元数据判定角色（教师类身份 / 单位号 1385 → teacher）
-    detected_role = _detect_chaoxing_role(metadata, verified_user)
+    # 超星 SSO 默认按学生处理；教师身份只能来自本地已授权记录，不由元数据决定。
+    sso_role = _detect_chaoxing_role(metadata, verified_user)
     current_app.logger.info(
-        "chaoxing identity: detected_role=%s cxid=%s fields=%s",
-        detected_role,
+        "chaoxing identity: sso_role=%s cxid=%s fields=%s",
+        sso_role,
         _mask_value(cxid),
         _identity_diagnostic(metadata, verified_user),
     )
@@ -593,16 +552,23 @@ def chaoxing_callback():
     username = f"cx_{cxid}"
     db = db_session()
     user = db.scalar(select(User).where(User.username == username))
-    if user is None and detected_role == "student":
+    if user is None:
         user = _match_roster_student(db, student_no, realname)
 
-    # 账号停用或学生无 enrollment 时，先清除可能存在的旧登录会话与令牌，再拒绝。
+    # 教师身份仅由本地数据库的合法授权记录决定；超星 SSO 不会创建或升级教师。
+    if user is not None and user.role == "teacher" and user.active:
+        final_role = "teacher"
+    else:
+        final_role = "student"
+
+    # 账号停用时，先清除可能存在的旧登录会话与令牌，再拒绝。
     if user is not None and not user.active:
         session.clear()
         flash("账号已被停用，请联系管理员。", "error")
         return _public_redirect("auth.login")
 
-    if detected_role == "student" and (
+    # 学生（含尚未建立本地账号的潜在学生）必须已有合法 enrollment，否则拒绝。
+    if final_role == "student" and (
         user is None or db.scalar(select(Enrollment).where(Enrollment.student_id == user.id)) is None
     ):
         session.clear()
@@ -617,7 +583,7 @@ def chaoxing_callback():
                 id=f"cx_{cxid}"[:64],
                 username=username,
                 name=realname or f"超星用户{cxid[-4:]}",
-                role=detected_role,
+                role=final_role,
                 password_hash="!chaoxing-oauth-no-password!",
                 active=True,
                 must_change_password=False,
@@ -629,9 +595,7 @@ def chaoxing_callback():
                 user.name = realname
             if user.chaoxing_cxid != cxid:
                 user.chaoxing_cxid = cxid
-            # 存量账号若此前被识别为学生、而超星元数据已确认为教师，自动升级角色
-            if user.role == "student" and detected_role == "teacher":
-                user.role = "teacher"
+            # 教师身份仅由本地授权记录决定，禁止通过 SSO 元数据创建或升级。
         db.add(AuditEvent(
             actor_id=user.id,
             action="login.chaoxing",

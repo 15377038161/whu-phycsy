@@ -152,9 +152,10 @@ def test_refresh_access_token_success(app_for_token, supabase_env, monkeypatch):
 def test_callback_stores_tokens_server_side_only(app_for_token, supabase_env, monkeypatch):
     """完整登录回跳：令牌应写入 app_sessions，响应体/Location 中不可见。"""
     from platform_app.db import db_session
+    from platform_app.models import User
 
     exchange_resp = _make_exchange_response("tok-access-abc", "tok-refresh-xyz")
-    # 使用教师身份，跳过学生 enrollment 检查，专注验证令牌存储
+    # 教师身份仅由本地授权记录决定；预先创建 active teacher 以跳过 enrollment 检查。
     user = _make_verified_user(cxid="teacher-token", realname="测试教师", metadata={"role": "teacher"})
 
     def fake_post(url, *, json, headers, timeout):
@@ -169,6 +170,21 @@ def test_callback_stores_tokens_server_side_only(app_for_token, supabase_env, mo
 
     monkeypatch.setattr("platform_app.blueprints.auth.httpx.post", fake_post)
     monkeypatch.setattr("platform_app.blueprints.auth.httpx.get", fake_get)
+
+    with app_for_token.app_context():
+        db_session().add(
+            User(
+                id="teacher-token",
+                username="cx_teacher-token",
+                name="测试教师",
+                role="teacher",
+                password_hash="!test!",
+                active=True,
+                must_change_password=False,
+                chaoxing_cxid="teacher-token",
+            )
+        )
+        db_session().commit()
 
     with app_for_token.test_client() as client:
         resp = client.get("/auth/chaoxing/callback?code=fake-code", follow_redirects=False)
@@ -235,6 +251,7 @@ def test_callback_rejects_unverified_token(app_for_token, supabase_env, monkeypa
 def test_logout_clears_tokens(app_for_token, supabase_env, monkeypatch):
     """注销后服务端会话中的 user_id 和令牌应被清除。"""
     from platform_app.db import db_session
+    from platform_app.models import User
 
     exchange_resp = _make_exchange_response("access-before", "refresh-before")
 
@@ -250,6 +267,22 @@ def test_logout_clears_tokens(app_for_token, supabase_env, monkeypatch):
 
     monkeypatch.setattr("platform_app.blueprints.auth.httpx.post", fake_post)
     monkeypatch.setattr("platform_app.blueprints.auth.httpx.get", fake_get)
+
+    # 教师身份仅由本地授权记录决定；预先创建 active teacher。
+    with app_for_token.app_context():
+        db_session().add(
+            User(
+                id="teacher-token",
+                username="cx_teacher-token",
+                name="测试教师",
+                role="teacher",
+                password_hash="!test!",
+                active=True,
+                must_change_password=False,
+                chaoxing_cxid="teacher-token",
+            )
+        )
+        db_session().commit()
 
     with app_for_token.test_client() as client:
         # 先以教师身份登录，确保成功建立会话
@@ -492,11 +525,14 @@ def test_sso_reject_clears_existing_session(app_for_token, supabase_env, monkeyp
     monkeypatch.setattr("platform_app.blueprints.auth.httpx.post", fake_post)
     monkeypatch.setattr("platform_app.blueprints.auth.httpx.get", fake_get)
 
-    # 先准备一名无 enrollment 学生和一名教师（教师用于建立旧会话）
+    # 先准备一名无 enrollment 学生和一名本地已授权教师（教师用于建立旧会话）
     with app_for_token.app_context():
         teacher, course, student = _seed_teacher_course_student(
             db_session(), student_no="session-clear-student"
         )
+        # 教师身份仅由本地授权记录决定；将教师账号绑定到即将使用的 cx_ 用户名
+        teacher.username = "cx_teacher-token"
+        teacher.chaoxing_cxid = "teacher-token"
         db_session().add(Enrollment(course_id=course.id, student_id=teacher.id))
         db_session().commit()
 
@@ -668,3 +704,176 @@ def test_sso_student_does_not_auto_join_second_course(app_for_token, supabase_en
         assert (
             db_session().scalar(select(User).where(User.username == "cx_multi-course")) is None
         )
+
+
+def test_sso_pseudo_teacher_metadata_without_enrollment_is_rejected(
+    app_for_token, supabase_env, monkeypatch
+):
+    """user_metadata 含 teacher/admin/单位号 1385 但无 enrollment 时，不得创建 teacher 或登录。"""
+    from platform_app.db import db_session
+    from platform_app.models import Enrollment, User
+
+    exchange_resp = _make_exchange_response("access-pseudo-teacher", "refresh-pseudo-teacher")
+
+    def fake_post(url, *, json, headers, timeout):
+        if "/exchange" in url:
+            return _FakeResponse(200, exchange_resp)
+        return _FakeResponse(500, {})
+
+    def fake_get(url, *, headers, timeout):
+        if "/auth/v1/user" in url:
+            return _FakeResponse(
+                200,
+                _make_verified_user(
+                    cxid="pseudo-teacher",
+                    realname="伪教师",
+                    metadata={
+                        "role": "teacher",
+                        "type": "administrator",
+                        "unitid": "1385",
+                        "jobtitle": "教授",
+                    },
+                ),
+            )
+        return _FakeResponse(500, {})
+
+    monkeypatch.setattr("platform_app.blueprints.auth.httpx.post", fake_post)
+    monkeypatch.setattr("platform_app.blueprints.auth.httpx.get", fake_get)
+
+    with app_for_token.app_context():
+        _seed_teacher_and_course(db_session())
+        enrollment_count_before = db_session().query(Enrollment).count()
+
+    with app_for_token.test_client() as client:
+        resp = client.get("/auth/chaoxing/callback?code=fake-code", follow_redirects=False)
+
+    assert resp.status_code == 302
+    location = resp.headers.get("Location", "")
+    assert "/login" in location
+    assert "/teacher" not in location
+
+    with app_for_token.app_context():
+        # 不得创建任何用户，更不得创建 teacher
+        sso_user = db_session().scalar(select(User).where(User.username == "cx_pseudo-teacher"))
+        assert sso_user is None
+        assert (
+            db_session()
+            .query(User)
+            .where(User.chaoxing_cxid == "pseudo-teacher", User.role == "teacher")
+            .count()
+            == 0
+        )
+        # 教师自己的 enrollment 可存在，但不得为伪教师新建任何 enrollment
+        assert db_session().query(Enrollment).count() == enrollment_count_before
+
+
+def test_sso_student_with_teacher_metadata_remains_student(app_for_token, supabase_env, monkeypatch):
+    """已有 enrollment 的学生即使元数据被标为 teacher/admin/1385，仍按 student 正常登录。"""
+    from platform_app.db import db_session
+    from platform_app.models import Enrollment, User
+
+    exchange_resp = _make_exchange_response("access-student-teacher-meta", "refresh-student-teacher-meta")
+
+    def fake_post(url, *, json, headers, timeout):
+        if "/exchange" in url:
+            return _FakeResponse(200, exchange_resp)
+        return _FakeResponse(500, {})
+
+    def fake_get(url, *, headers, timeout):
+        if "/auth/v1/user" in url:
+            return _FakeResponse(
+                200,
+                _make_verified_user(
+                    cxid="student-teacher-meta",
+                    realname="学生甲",
+                    metadata={
+                        "student_no": "student-teacher-meta",
+                        "role": "teacher",
+                        "unitid": "1385",
+                        "type": "admin",
+                    },
+                ),
+            )
+        return _FakeResponse(500, {})
+
+    monkeypatch.setattr("platform_app.blueprints.auth.httpx.post", fake_post)
+    monkeypatch.setattr("platform_app.blueprints.auth.httpx.get", fake_get)
+
+    with app_for_token.app_context():
+        teacher, course, student = _seed_teacher_course_student(
+            db_session(), student_no="student-teacher-meta"
+        )
+        db_session().add(Enrollment(course_id=course.id, student_id=student.id))
+        db_session().commit()
+
+    with app_for_token.test_client() as client:
+        resp = client.get("/auth/chaoxing/callback?code=fake-code", follow_redirects=False)
+
+    assert resp.status_code == 302
+    location = resp.headers.get("Location", "")
+    assert "/student/home" in location
+    assert "/teacher/dashboard" not in location
+
+    with app_for_token.app_context():
+        refreshed = db_session().get(User, student.id)
+        assert refreshed.role == "student"
+        assert refreshed.chaoxing_cxid == "student-teacher-meta"
+        enrollments = (
+            db_session().query(Enrollment).where(Enrollment.student_id == student.id).all()
+        )
+        assert len(enrollments) == 1
+
+
+def test_sso_existing_local_teacher_preserved(app_for_token, supabase_env, monkeypatch):
+    """本地已授权 active teacher 通过超星 SSO 登录时，保留 teacher 角色并进入教师首页。"""
+    from platform_app.db import db_session
+    from platform_app.models import User
+
+    exchange_resp = _make_exchange_response("access-local-teacher", "refresh-local-teacher")
+
+    def fake_post(url, *, json, headers, timeout):
+        if "/exchange" in url:
+            return _FakeResponse(200, exchange_resp)
+        return _FakeResponse(500, {})
+
+    def fake_get(url, *, headers, timeout):
+        if "/auth/v1/user" in url:
+            return _FakeResponse(
+                200,
+                _make_verified_user(
+                    cxid="local-teacher",
+                    realname="本地教师",
+                    metadata={"role": "student", "type": "本科生"},
+                ),
+            )
+        return _FakeResponse(500, {})
+
+    monkeypatch.setattr("platform_app.blueprints.auth.httpx.post", fake_post)
+    monkeypatch.setattr("platform_app.blueprints.auth.httpx.get", fake_get)
+
+    with app_for_token.app_context():
+        teacher = User(
+            id="teacher-local",
+            username="cx_local-teacher",
+            name="本地教师",
+            role="teacher",
+            password_hash="!test!",
+            active=True,
+            must_change_password=False,
+            chaoxing_cxid="local-teacher",
+        )
+        db_session().add(teacher)
+        db_session().commit()
+
+    with app_for_token.test_client() as client:
+        resp = client.get("/auth/chaoxing/callback?code=fake-code", follow_redirects=False)
+
+    assert resp.status_code == 302
+    location = resp.headers.get("Location", "")
+    assert "/teacher" in location
+    assert "/student/home" not in location
+
+    with app_for_token.app_context():
+        refreshed = db_session().get(User, teacher.id)
+        assert refreshed.role == "teacher"
+        assert refreshed.active is True

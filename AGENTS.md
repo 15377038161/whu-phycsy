@@ -40,6 +40,11 @@
 - 学生课程成员关系（`enrollments`）**必须由教师通过学生管理/名单导入显式授权**；超星 SSO 首次登录
   不再自动加入任何默认课程。若学生无 enrollment，登录流程会保留匿名会话并提示“你尚未被加入任何课程”，
   不建立已登录会话，避免未授权访问或跨课程误绑定。
+- 教师身份（`users.role='teacher'`）**仅由本地数据库的合法授权记录决定**。超星 SSO 登录时，
+  `user_metadata`、单位号、自由关键词均不得用于授予或升级教师角色；`platform_app/blueprints/auth.py`
+  中的 `_detect_chaoxing_role()` 固定返回 `student`。已有本地 active teacher 通过 SSO 登录时保留
+  原角色并进入教师首页；未授权用户即使元数据含 `teacher`/`admin`/单位号 `1385` 等字段，也按学生
+  处理且必须存在 enrollment，否则拒绝登录，不得创建 teacher 账号。
 - 服务端诊断端点（仅已登录用户可访问，受全局 CSRF 保护）：
   - `POST /api/diag/auth`：使用当前会话中的用户 JWT 调用 `/auth/v1/user`，返回环境状态、认证状态、
     脱敏后的 `auth.uid()` 与本地用户映射关系，不返回 token 或完整 JWT。

@@ -221,7 +221,7 @@ AI_READY_TTL_SECONDS=300
 | `users` | `id` | 用户/学号主键 | 学生导入时确定；教师初始值通常为 `T001` |
 | `users` | `username` | 登录名，唯一 | 学生名册导入；教师首次初始化 |
 | `users` | `name` | 姓名 | 学生管理或导入数据 |
-| `users` | `role` | `teacher` 或 `student` | 初始化/导入时确定，不在普通 UI 改角色 |
+| `users` | `role` | `teacher` 或 `student` | 仅本地初始化/导入/授权时确定；超星 SSO 不通过 `user_metadata`/单位号/关键词授予或升级 teacher |
 | `users` | `password_hash` | 密码哈希 | 账号修改密码或教师重置学生密码 |
 | `users` | `active` | 是否可登录 | 账号管理逻辑 |
 | `users` | `must_change_password` | 是否强制首次改密 | 导入/重置密码时设置 |
