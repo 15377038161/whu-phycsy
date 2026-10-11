@@ -6,7 +6,7 @@
   <title>{% block title %}珞珈量子实验馆{% endblock %}</title>
   <link rel="icon" href="data:,">
   {# Previous UI cache marker: 20260806-ui-standard-v1. Asset URLs below use the report-fit revision. #}
-  <link rel="stylesheet" href="{{ url_for('static', filename='quantum-platform.css', v='20260813-multidevice-v1') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='quantum-platform.css', v='20261011-layout-v1') }}">
   <script defer src="{{ url_for('static', filename='vendor/lucide/lucide.min.js') }}"></script>
   {% if user and user.role == 'student' %}<link rel="stylesheet" href="{{ url_for('static', filename='vendor/katex/katex.min.css') }}"><script defer src="{{ url_for('static', filename='vendor/katex/katex.min.js') }}"></script>{% endif %}
   <meta name="sid" content="{{ _sid }}">
