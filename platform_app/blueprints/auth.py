@@ -397,57 +397,6 @@ def _identity_diagnostic(metadata: dict, claims: dict) -> dict:
     return result
 
 
-# 学生身份自动匹配：超星元数据中提取学号（字段命名不稳定，做多字段兼容）。
-_STUDENT_NO_KEYS = (
-    "student_no", "studentno", "sno", "student_id", "studentid", "userno",
-    "user_no", "job_number", "jobnumber", "xh", "number", "code", "学号",
-)
-
-
-def _extract_student_no(metadata: dict, claims: dict) -> str:
-    merged = {**claims, **metadata}
-    for key in _STUDENT_NO_KEYS:
-        value = str(merged.get(key) or "").strip()
-        if value:
-            return value[:64]
-    return ""
-
-
-def _match_roster_student(session, student_no: str, realname: str):
-    """在学生名单账号中匹配超星身份：优先学号精确匹配，其次姓名唯一匹配。
-
-    名单账号由教师导入创建（username 为学号、非 cx_ 前缀），这里只在这些账号中
-    匹配，避免与超星自动创建的 cx_ 账号混淆。返回唯一匹配的 User 或 None。
-    """
-    if not student_no and not realname:
-        return None
-    # 学号精确匹配：id 或 username 均可能为学号
-    if student_no:
-        matched = session.scalar(
-            select(User).where(
-                User.role == "student",
-                User.active.is_(True),
-                or_(User.id == student_no, User.username == student_no),
-            )
-        )
-        if matched is not None:
-            return matched
-    if not realname:
-        return None
-    # 姓名唯一匹配：仅限教师导入的名单账号（username 非 cx_ 前缀）
-    candidates = session.scalars(
-        select(User).where(
-            User.role == "student",
-            User.active.is_(True),
-            User.name == realname,
-            ~User.username.like("cx_%"),
-        )
-    ).all()
-    if len(candidates) == 1:
-        return candidates[0]
-    return None
-
-
 @bp.get("/auth/chaoxing")
 def chaoxing_login():
     """发起超星一键登录：换取授权地址并顶层跳转。"""
@@ -524,36 +473,34 @@ def chaoxing_callback():
         flash("身份信息校验失败，请重新登录。", "error")
         return _public_redirect("auth.login")
 
+    # 身份键只从 Supabase Auth 已验证顶层获取，不采用用户可编辑的 user_metadata。
+    # 后续若平台提供 app_metadata 等不可用户编辑的官方契约字段，可在此白名单扩展。
+    identity_key = str(verified_user.get("id") or verified_user.get("sub") or "").strip()
     metadata = verified_user.get("user_metadata") or {}
-    cxid = str(metadata.get("cxid") or verified_user.get("id") or "").strip()
     realname = str(metadata.get("realname") or metadata.get("name") or "").strip()
-    if not cxid:
-        current_app.logger.warning("chaoxing exchange: no cxid in verified user metadata")
-        flash("未能获取超星身份信息，请联系管理员。", "error")
+    if not identity_key:
+        current_app.logger.warning("chaoxing exchange: no verified identity in user")
+        flash("未能获取可信身份信息，请联系管理员绑定账号后再登录。", "error")
         return _public_redirect("auth.login")
 
     # 超星 SSO 默认按学生处理；教师身份只能来自本地已授权记录，不由元数据决定。
     sso_role = _detect_chaoxing_role(metadata, verified_user)
     current_app.logger.info(
-        "chaoxing identity: sso_role=%s cxid=%s fields=%s",
+        "chaoxing identity: sso_role=%s identity=%s fields=%s",
         sso_role,
-        _mask_value(cxid),
+        _mask_value(identity_key),
         _identity_diagnostic(metadata, verified_user),
     )
 
-    # 学生身份自动匹配：优先用超星元数据中的学号/姓名匹配教师已导入的名单账号，
-    # 命中后复用名单账号（学号为 id/username），从而自动完成班级绑定，避免为同一
-    # 学生重复创建 cx_ 账号导致名单与超星账号割裂。
-    student_no = _extract_student_no(metadata, verified_user)
-
-    # 映射本地用户：先只读解析，避免无权限身份在事务中意外提交。
-    # 学生课程成员关系必须由教师通过学生管理/名单导入显式授权；
-    # 超星 SSO 不再自动加入任何默认课程，避免未授权访问或跨课程误绑定。
-    username = f"cx_{cxid}"
+    # 映射本地用户：仅允许已存在的 cx_<identity> 账号或教师预授权绑定的 chaoxing_cxid。
+    # 禁止通过 user_metadata 中的姓名/学号匹配、重绑他人名单用户，防止账号接管。
+    username = f"cx_{identity_key}"
     db = db_session()
-    user = db.scalar(select(User).where(User.username == username))
-    if user is None:
-        user = _match_roster_student(db, student_no, realname)
+    user = db.scalar(
+        select(User).where(
+            or_(User.username == username, User.chaoxing_cxid == identity_key)
+        )
+    )
 
     # 教师身份仅由本地数据库的合法授权记录决定；超星 SSO 不会创建或升级教师。
     if user is not None and user.role == "teacher" and user.active:
@@ -567,46 +514,59 @@ def chaoxing_callback():
         flash("账号已被停用，请联系管理员。", "error")
         return _public_redirect("auth.login")
 
-    # 学生（含尚未建立本地账号的潜在学生）必须已有合法 enrollment，否则拒绝。
+    # 学生必须已有合法本地账号及 enrollment；无预绑定账号时 fail closed。
+    if user is None:
+        session.clear()
+        flash(
+            "该超星账号尚未绑定实验平台账号，请联系任课教师或管理员导入/绑定后再登录。",
+            "error",
+        )
+        return _public_redirect("auth.login")
+
     if final_role == "student" and (
-        user is None or db.scalar(select(Enrollment).where(Enrollment.student_id == user.id)) is None
+        db.scalar(select(Enrollment).where(Enrollment.student_id == user.id)) is None
     ):
         session.clear()
         flash("你尚未被加入任何课程，请联系任课教师导入名单后再登录。", "error")
-        # 返回登录页时保持匿名会话以承载 flash 提示；不建立已登录会话。
         return _public_redirect("auth.login")
 
     # 通过授权检查后，统一在事务中写入用户映射、更新与审计。
+    # 冲突检测前置：同一超星身份不能被多个本地账号竞争。
+    conflict_user = db.scalar(
+        select(User).where(
+            User.chaoxing_cxid == identity_key,
+            User.id != user.id,
+        )
+    )
+    if conflict_user is not None:
+        with transaction() as db:
+            db.add(AuditEvent(
+                actor_id=user.id,
+                action="login.chaoxing.rejected",
+                entity_type="user",
+                entity_id=user.id,
+                detail={"reason": "identity conflict", "ip": request.remote_addr or "unknown"},
+            ))
+        session.clear()
+        flash("该超星身份已被其他平台账号绑定，请联系管理员处理。", "error")
+        return _public_redirect("auth.login")
+
     with transaction() as db:
-        if user is None:
-            user = User(
-                id=f"cx_{cxid}"[:64],
-                username=username,
-                name=realname or f"超星用户{cxid[-4:]}",
-                role=final_role,
-                password_hash="!chaoxing-oauth-no-password!",
-                active=True,
-                must_change_password=False,
-                chaoxing_cxid=cxid,
-            )
-            db.add(user)
-        else:
-            if realname and user.name != realname:
-                user.name = realname
-            if user.chaoxing_cxid != cxid:
-                user.chaoxing_cxid = cxid
-            # 教师身份仅由本地授权记录决定，禁止通过 SSO 元数据创建或升级。
+        if realname and user.name != realname:
+            user.name = realname
+        if user.chaoxing_cxid != identity_key:
+            user.chaoxing_cxid = identity_key
         db.add(AuditEvent(
             actor_id=user.id,
             action="login.chaoxing",
             entity_type="user",
             entity_id=user.id,
-            detail={"cxid": cxid[:64], "ip": request.remote_addr or "unknown"},
+            detail={"identity": identity_key[:64], "ip": request.remote_addr or "unknown"},
         ))
 
     session.clear()
     session["user_id"] = user.id
-    session["chaoxing_cxid"] = cxid
+    session["chaoxing_cxid"] = identity_key
     # access_token / refresh_token 只保存在服务端 app_sessions 表，
     # 不进入 URL 的 _sid、不写入浏览器可读 cookie、不输出到日志。
     session["cx_access_token"] = access_token

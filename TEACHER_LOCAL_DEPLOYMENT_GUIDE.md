@@ -222,6 +222,7 @@ AI_READY_TTL_SECONDS=300
 | `users` | `username` | 登录名，唯一 | 学生名册导入；教师首次初始化 |
 | `users` | `name` | 姓名 | 学生管理或导入数据 |
 | `users` | `role` | `teacher` 或 `student` | 仅本地初始化/导入/授权时确定；超星 SSO 不通过 `user_metadata`/单位号/关键词授予或升级 teacher |
+| `users` | `chaoxing_cxid` | 超星身份绑定键 | 教师/管理员在后台为学生账号显式绑定；SSO 凭已验证顶层身份键匹配，不通过姓名/学号自动匹配 |
 | `users` | `password_hash` | 密码哈希 | 账号修改密码或教师重置学生密码 |
 | `users` | `active` | 是否可登录 | 账号管理逻辑 |
 | `users` | `must_change_password` | 是否强制首次改密 | 导入/重置密码时设置 |

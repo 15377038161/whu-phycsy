@@ -35,11 +35,14 @@
   `refresh_access_token(refresh_token)`、`data_api_request(method, path, jwt)`，均通过 `httpx`
   直接调用 Supabase Auth/Data API，不持有 service role，不本地 decode JWT。
 - 身份映射：超星 OAuth 登录成功后，服务端把 Supabase `access_token` / `refresh_token` 存入服务端
-  `app_sessions` 表（不在 URL/前端/日志中暴露），并通过 `auth_get_user()` 实时校验；`auth.uid()`
-  与本地 `User` 的映射依据为 `user_metadata.cxid` ↔ `User.chaoxing_cxid`（cxid 是超星用户标识）。
+  `app_sessions` 表（不在 URL/前端/日志中暴露），并通过 `auth_get_user()` 实时校验；本地 `User` 的
+  查找只使用 Supabase Auth 已验证顶层身份键（`verified_user.id`/`sub`），匹配 `cx_<identity>` 用户名
+  或教师预先授权的 `User.chaoxing_cxid`。`user_metadata` 中的姓名、学号、自由关键词不再用于匹配或
+  绑定名单用户，防止用户通过可编辑元数据接管他人账号。
 - 学生课程成员关系（`enrollments`）**必须由教师通过学生管理/名单导入显式授权**；超星 SSO 首次登录
-  不再自动加入任何默认课程。若学生无 enrollment，登录流程会保留匿名会话并提示“你尚未被加入任何课程”，
-  不建立已登录会话，避免未授权访问或跨课程误绑定。
+  不再自动加入任何默认课程，也不会自动创建新用户。若超星身份未与本地账号绑定，登录流程会保留匿名
+  会话并提示“该超星账号尚未绑定实验平台账号”，不建立已登录会话，避免未授权访问或跨课程误绑定。
+  已绑定学生若无 enrollment，则提示“你尚未被加入任何课程”。
 - 教师身份（`users.role='teacher'`）**仅由本地数据库的合法授权记录决定**。超星 SSO 登录时，
   `user_metadata`、单位号、自由关键词均不得用于授予或升级教师角色；`platform_app/blueprints/auth.py`
   中的 `_detect_chaoxing_role()` 固定返回 `student`。已有本地 active teacher 通过 SSO 登录时保留

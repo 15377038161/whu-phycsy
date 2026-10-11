@@ -44,11 +44,13 @@ def public_base_env(monkeypatch):
 
 
 def _make_verified_user(cxid: str = "123456789", realname: str = "测试用户", metadata: dict | None = None):
-    user_metadata = {"cxid": cxid, "realname": realname}
+    # 顶层 id 为平台已验证身份键，模拟 Supabase Auth 的不可用户编辑 sub/uid。
+    # user_metadata 仅保留姓名等辅助信息，不再用于身份绑定。
+    user_metadata = {"realname": realname}
     if metadata:
         user_metadata.update(metadata)
     return {
-        "id": "00000000-0000-0000-0000-000000000000",
+        "id": cxid,
         "aud": "authenticated",
         "role": "authenticated",
         "user_metadata": user_metadata,
@@ -613,6 +615,8 @@ def test_sso_student_with_existing_enrollment_keeps_it(app_for_token, supabase_e
         teacher, course, student = _seed_teacher_course_student(
             db_session(), student_no="has-enroll-student"
         )
+        # 教师已预先绑定该学生的超星身份
+        student.chaoxing_cxid = "has-enroll"
         db_session().add(Enrollment(course_id=course.id, student_id=student.id))
         db_session().commit()
 
@@ -669,6 +673,8 @@ def test_sso_student_does_not_auto_join_second_course(app_for_token, supabase_en
         teacher, course1, student = _seed_teacher_course_student(
             db_session(), course_name="课程甲", student_no="multi-course-student"
         )
+        # 教师已预先绑定该学生的超星身份
+        student.chaoxing_cxid = "multi-course"
         course2 = Course(
             id="course-002",
             teacher_id=teacher.id,
@@ -803,6 +809,8 @@ def test_sso_student_with_teacher_metadata_remains_student(app_for_token, supaba
         teacher, course, student = _seed_teacher_course_student(
             db_session(), student_no="student-teacher-meta"
         )
+        # 教师已预先绑定该学生的超星身份
+        student.chaoxing_cxid = "student-teacher-meta"
         db_session().add(Enrollment(course_id=course.id, student_id=student.id))
         db_session().commit()
 
@@ -877,3 +885,212 @@ def test_sso_existing_local_teacher_preserved(app_for_token, supabase_env, monke
         refreshed = db_session().get(User, teacher.id)
         assert refreshed.role == "teacher"
         assert refreshed.active is True
+
+
+def test_sso_forged_student_no_cannot_take_over_roster_user(
+    app_for_token, supabase_env, monkeypatch
+):
+    """攻击者伪造 user_metadata 中学号，不得接管教师已导入的名单学生账号。"""
+    from platform_app.db import db_session
+    from platform_app.models import Enrollment, User
+
+    # 攻击者把自己的 verified id 设为 attacker-cxid，但在 user_metadata 中伪造目标学号
+    exchange_resp = _make_exchange_response("access-forged-sno", "refresh-forged-sno")
+
+    def fake_post(url, *, json, headers, timeout):
+        if "/exchange" in url:
+            return _FakeResponse(200, exchange_resp)
+        return _FakeResponse(500, {})
+
+    def fake_get(url, *, headers, timeout):
+        if "/auth/v1/user" in url:
+            return _FakeResponse(
+                200,
+                _make_verified_user(
+                    cxid="attacker-cxid",
+                    realname="学生甲",
+                    metadata={"student_no": "victim-student"},
+                ),
+            )
+        return _FakeResponse(500, {})
+
+    monkeypatch.setattr("platform_app.blueprints.auth.httpx.post", fake_post)
+    monkeypatch.setattr("platform_app.blueprints.auth.httpx.get", fake_get)
+
+    with app_for_token.app_context():
+        teacher, course, victim = _seed_teacher_course_student(
+            db_session(), student_no="victim-student"
+        )
+        db_session().add(Enrollment(course_id=course.id, student_id=victim.id))
+        db_session().commit()
+
+    with app_for_token.test_client() as client:
+        resp = client.get("/auth/chaoxing/callback?code=fake-code", follow_redirects=False)
+
+    assert resp.status_code == 302
+    location = resp.headers.get("Location", "")
+    assert "/login" in location
+    assert "/student/home" not in location
+
+    with app_for_token.app_context():
+        # 攻击者账号不应被创建
+        assert db_session().scalar(select(User).where(User.username == "cx_attacker-cxid")) is None
+        # 受害者账号绑定关系不应被修改
+        victim_refreshed = db_session().get(User, victim.id)
+        assert victim_refreshed.chaoxing_cxid is None
+        # 受害者 enrollment 不变
+        assert (
+            db_session().query(Enrollment).where(Enrollment.student_id == victim.id).count() == 1
+        )
+
+
+def test_sso_forged_realname_cannot_take_over_roster_user(
+    app_for_token, supabase_env, monkeypatch
+):
+    """攻击者伪造 user_metadata 中姓名，不得通过姓名唯一匹配接管他人账号。"""
+    from platform_app.db import db_session
+    from platform_app.models import Enrollment, User
+
+    exchange_resp = _make_exchange_response("access-forged-name", "refresh-forged-name")
+
+    def fake_post(url, *, json, headers, timeout):
+        if "/exchange" in url:
+            return _FakeResponse(200, exchange_resp)
+        return _FakeResponse(500, {})
+
+    def fake_get(url, *, headers, timeout):
+        if "/auth/v1/user" in url:
+            return _FakeResponse(
+                200,
+                _make_verified_user(
+                    cxid="attacker-cxid-2",
+                    realname="学生甲",  # 伪造姓名，与受害者相同
+                    metadata={},
+                ),
+            )
+        return _FakeResponse(500, {})
+
+    monkeypatch.setattr("platform_app.blueprints.auth.httpx.post", fake_post)
+    monkeypatch.setattr("platform_app.blueprints.auth.httpx.get", fake_get)
+
+    with app_for_token.app_context():
+        teacher, course, victim = _seed_teacher_course_student(
+            db_session(), student_no="victim-student-2"
+        )
+        victim.name = "学生甲"
+        db_session().add(Enrollment(course_id=course.id, student_id=victim.id))
+        db_session().commit()
+
+    with app_for_token.test_client() as client:
+        resp = client.get("/auth/chaoxing/callback?code=fake-code", follow_redirects=False)
+
+    assert resp.status_code == 302
+    location = resp.headers.get("Location", "")
+    assert "/login" in location
+
+    with app_for_token.app_context():
+        assert db_session().scalar(select(User).where(User.username == "cx_attacker-cxid-2")) is None
+        victim_refreshed = db_session().get(User, victim.id)
+        assert victim_refreshed.chaoxing_cxid is None
+
+
+def test_sso_bound_student_with_enrollment_logs_in_normally(
+    app_for_token, supabase_env, monkeypatch
+):
+    """教师预绑定且已入课的学生，SSO 正常登录并保留 enrollment。"""
+    from platform_app.db import db_session
+    from platform_app.models import Enrollment, User
+
+    exchange_resp = _make_exchange_response("access-bound", "refresh-bound")
+
+    def fake_post(url, *, json, headers, timeout):
+        if "/exchange" in url:
+            return _FakeResponse(200, exchange_resp)
+        return _FakeResponse(500, {})
+
+    def fake_get(url, *, headers, timeout):
+        if "/auth/v1/user" in url:
+            return _FakeResponse(200, _make_verified_user(cxid="bound-student", realname="学生甲"))
+        return _FakeResponse(500, {})
+
+    monkeypatch.setattr("platform_app.blueprints.auth.httpx.post", fake_post)
+    monkeypatch.setattr("platform_app.blueprints.auth.httpx.get", fake_get)
+
+    with app_for_token.app_context():
+        teacher, course, student = _seed_teacher_course_student(
+            db_session(), student_no="bound-student-local"
+        )
+        student.chaoxing_cxid = "bound-student"
+        db_session().add(Enrollment(course_id=course.id, student_id=student.id))
+        db_session().commit()
+
+    with app_for_token.test_client() as client:
+        resp = client.get("/auth/chaoxing/callback?code=fake-code", follow_redirects=False)
+
+    assert resp.status_code == 302
+    location = resp.headers.get("Location", "")
+    assert "/student/home" in location
+
+    with app_for_token.app_context():
+        refreshed = db_session().get(User, student.id)
+        assert refreshed.chaoxing_cxid == "bound-student"
+        assert refreshed.role == "student"
+        assert (
+            db_session().query(Enrollment).where(Enrollment.student_id == student.id).count() == 1
+        )
+
+
+def test_sso_identity_conflict_rejects_login(app_for_token, supabase_env, monkeypatch):
+    """同一超星身份已被其他本地账号绑定时，当前账号登录应被拒绝。"""
+    from platform_app.db import db_session
+    from platform_app.models import Enrollment, User
+
+    exchange_resp = _make_exchange_response("access-conflict", "refresh-conflict")
+
+    def fake_post(url, *, json, headers, timeout):
+        if "/exchange" in url:
+            return _FakeResponse(200, exchange_resp)
+        return _FakeResponse(500, {})
+
+    def fake_get(url, *, headers, timeout):
+        if "/auth/v1/user" in url:
+            return _FakeResponse(200, _make_verified_user(cxid="conflict-identity", realname="学生乙"))
+        return _FakeResponse(500, {})
+
+    monkeypatch.setattr("platform_app.blueprints.auth.httpx.post", fake_post)
+    monkeypatch.setattr("platform_app.blueprints.auth.httpx.get", fake_get)
+
+    with app_for_token.app_context():
+        teacher, course, student_a = _seed_teacher_course_student(
+            db_session(), student_no="student-a"
+        )
+        # 学生 A 已预先绑定该超星身份
+        student_a.chaoxing_cxid = "conflict-identity"
+        # 学生 B 的 username 与 SSO 自动生成的 cx_<identity> 冲突，但尚未绑定
+        student_b = User(
+            id="student-b",
+            username="cx_conflict-identity",
+            name="学生乙",
+            role="student",
+            password_hash="!test!",
+            active=True,
+        )
+        db_session().add(student_b)
+        db_session().add(Enrollment(course_id=course.id, student_id=student_a.id))
+        db_session().commit()
+
+    with app_for_token.test_client() as client:
+        resp = client.get("/auth/chaoxing/callback?code=fake-code", follow_redirects=False)
+
+    assert resp.status_code == 302
+    location = resp.headers.get("Location", "")
+    assert "/login" in location
+    assert "/student/home" not in location
+
+    with app_for_token.app_context():
+        # 学生 B 不应被绑定到该超星身份
+        student_b_refreshed = db_session().get(User, student_b.id)
+        assert student_b_refreshed.chaoxing_cxid is None
+        # 学生 A 的绑定保持不变
+        student_a_refreshed = db_session().get(User, student_a.id)
+        assert student_a_refreshed.chaoxing_cxid == "conflict-identity"
