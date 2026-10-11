@@ -1,4 +1,8 @@
-"""Small lazy OpenAI-compatible client. Secrets are read only at call time."""
+"""Small lazy OpenAI-compatible client. Secrets are read only at call time.
+
+优先使用平台原生模型端点（CODER_CODING_MODEL_*）；若未配置，可回退到旧外部 AI 端点。
+学生 AI 上下文仅包含已发布的实验公开材料，不得读取私有表或学生数据。
+"""
 from __future__ import annotations
 
 import json
@@ -16,19 +20,55 @@ _ready_cache: dict[str, object] = {"key": None, "checked_at": 0.0, "value": Fals
 
 
 def _config() -> dict[str, str]:
-    values = {"base_url": os.getenv("AI_BASE_URL", "").rstrip("/"), "api_key": os.getenv("AI_API_KEY", ""), "text_model": os.getenv("AI_TEXT_MODEL", ""), "vision_model": os.getenv("AI_VISION_MODEL", "")}
-    missing = [key for key, value in values.items() if not value]
-    if missing: raise RuntimeError("AI configuration is incomplete: " + ", ".join(missing))
-    return values
+    """Resolve LLM endpoint configuration. Native model takes priority."""
+    native_base = os.getenv("CODER_CODING_MODEL_BASE_URL", "").rstrip("/")
+    native_key = os.getenv("CODER_CODING_MODEL_API_KEY", "")
+    native_model = os.getenv("CODER_CODING_MODEL", "doubao-seed-1-8-251228")
+    if native_base and native_key:
+        return {
+            "base_url": native_base,
+            "api_key": native_key,
+            "text_model": native_model,
+            "vision_model": native_model,
+            "source": "native",
+        }
+
+    # Optional legacy fallback; does not require the user to provide it.
+    legacy = {
+        "base_url": os.getenv("AI_BASE_URL", "").rstrip("/"),
+        "api_key": os.getenv("AI_API_KEY", ""),
+        "text_model": os.getenv("AI_TEXT_MODEL", ""),
+        "vision_model": os.getenv("AI_VISION_MODEL", ""),
+    }
+    if all(legacy.values()):
+        return {**legacy, "source": "legacy"}
+
+    missing = []
+    if not native_base:
+        missing.append("CODER_CODING_MODEL_BASE_URL")
+    if not native_key:
+        missing.append("CODER_CODING_MODEL_API_KEY")
+    raise RuntimeError(
+        "平台原生模型未配置，请设置 CODER_CODING_MODEL_BASE_URL 和 CODER_CODING_MODEL_API_KEY；"
+        f"当前缺少：{', '.join(missing)}。"
+    )
 
 
 def _chat(model: str, messages: list[dict], *, temperature=0.0, max_tokens=3000) -> str:
     cfg = _config()
-    response = httpx.post(f"{cfg['base_url']}/chat/completions", headers={"Authorization": f"Bearer {cfg['api_key']}"}, json={"model": model, "messages": messages, "temperature": temperature, "max_tokens": max_tokens}, timeout=httpx.Timeout(connect=15, read=90, write=30, pool=15))
-    response.raise_for_status(); choices = response.json().get("choices") or []
-    if not choices: raise RuntimeError("AI response did not contain choices")
+    response = httpx.post(
+        f"{cfg['base_url']}/chat/completions",
+        headers={"Authorization": f"Bearer {cfg['api_key']}", "Content-Type": "application/json"},
+        json={"model": model, "messages": messages, "temperature": temperature, "max_tokens": max_tokens},
+        timeout=httpx.Timeout(connect=15, read=90, write=30, pool=15),
+    )
+    response.raise_for_status()
+    choices = response.json().get("choices") or []
+    if not choices:
+        raise RuntimeError("AI response did not contain choices")
     content = choices[0].get("message", {}).get("content", "")
-    if isinstance(content, list): return "".join(item.get("text", "") for item in content if isinstance(item, dict))
+    if isinstance(content, list):
+        return "".join(item.get("text", "") for item in content if isinstance(item, dict))
     return str(content)
 
 
@@ -38,7 +78,7 @@ def _chat_stream(model: str, messages: list[dict], *, temperature=0.0, max_token
     with httpx.stream(
         "POST",
         f"{cfg['base_url']}/chat/completions",
-        headers={"Authorization": f"Bearer {cfg['api_key']}"},
+        headers={"Authorization": f"Bearer {cfg['api_key']}", "Content-Type": "application/json"},
         json={"model": model, "messages": messages, "temperature": temperature, "max_tokens": max_tokens, "stream": True},
         timeout=httpx.Timeout(connect=15, read=90, write=30, pool=15),
     ) as response:
@@ -66,11 +106,14 @@ def _chat_stream(model: str, messages: list[dict], *, temperature=0.0, max_token
 
 def _json(text: str):
     clean = re.sub(r"^```(?:json)?\s*|\s*```$", "", text.strip(), flags=re.I)
-    try: return json.loads(clean)
+    try:
+        return json.loads(clean)
     except json.JSONDecodeError:
-        start = min((i for i in (clean.find("["), clean.find("{")) if i >= 0), default=-1); end = max(clean.rfind("]"), clean.rfind("}"))
-        if start < 0 or end <= start: raise
-        return json.loads(clean[start:end+1])
+        start = min((i for i in (clean.find("["), clean.find("{")) if i >= 0), default=-1)
+        end = max(clean.rfind("]"), clean.rfind("}"))
+        if start < 0 or end <= start:
+            raise
+        return json.loads(clean[start:end + 1])
 
 
 def ai_ready() -> bool:
@@ -80,28 +123,92 @@ def ai_ready() -> bool:
     now = time.monotonic()
     if _ready_cache["key"] == cache_key and now - float(_ready_cache["checked_at"]) < ttl:
         return bool(_ready_cache["value"])
+
     _chat(cfg["text_model"], [{"role": "user", "content": "Reply OK"}], max_tokens=2)
-    def chunk(kind, data): return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data) & 0xffffffff)
+
+    def chunk(kind, data):
+        return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data) & 0xffffffff)
+
     raw = b"".join(b"\x00" + b"\xff\xff\xff" * 16 for _ in range(16))
     png = b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", 16, 16, 8, 2, 0, 0, 0)) + chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b"")
     pixel = "data:image/png;base64," + base64.b64encode(png).decode()
     _chat(cfg["vision_model"], [{"role": "user", "content": [{"type": "text", "text": "Reply OK"}, {"type": "image_url", "image_url": {"url": pixel}}]}], max_tokens=2)
+
     _ready_cache.update(key=cache_key, checked_at=now, value=True)
     return True
 
 
-_STUDENT_AI_RESTRICTED_PATTERNS = (
+_RESTRICTION_MESSAGE = (
+    "AI 助教不能查询或推断成绩、他人信息、预习题答案、实验具体数据或标准结果。"
+    "我只能解释当前实验原理，或在你忘记时提醒已发布的操作步骤。"
+)
+
+# Privacy / grade / others rules run independently of the answer rule.
+_PRIVACY_AND_GRADE_PATTERNS = (
     r"成绩|分数|得分|评分|排名|及格|多少分|考了多少|通过(?:了|没)|老师打分|审核结果",
     r"其他同学|别的同学|同学的|全班|班级成绩|他人成绩|(?:同学|别人).*(?:成绩|分数|数据|结果|答案)",
-    r"答案|正确选项|选哪|选什么|选[A-DＡ-Ｄ]|第[一二三四五六七八九十\d]+题.*(?:对|选)|题库|原题",
     r"原始数据|具体数据|实验数据|测量数据|标准值|参考值|结果值|拟合参数|密钥内容",
 )
 
+_ANSWER_REQUEST_PATTERN = r"答案|正确选项|选哪|选什么|选[A-DＡ-Ｄ]|第[一二三四五六七八九十\d]+题.*(?:对|选)|题库|原题"
+
+# Only these narrow self-denying phrases about preview answers are allowed.
+_ALLOWED_NEGATED_ANSWER_PHRASES = frozenset({
+    "不要提供预习题答案",
+    "不要给预习题答案",
+    "别提供预习题答案",
+    "别给预习题答案",
+    "不需要预习题答案",
+    "无需预习题答案",
+    "勿提供预习题答案",
+    "勿给预习题答案",
+    "预习题答案不要提供",
+    "预习题答案不要给",
+    "预习题答案别提供",
+    "预习题答案别给",
+    "预习题答案不需要",
+    "预习题答案无需",
+    "预习题答案勿提供",
+    "预习题答案勿给",
+})
+
+
+def _has_privacy_or_grade_request(normalized: str) -> bool:
+    return any(re.search(pattern, normalized, re.I) for pattern in _PRIVACY_AND_GRADE_PATTERNS)
+
+
+def _is_explicit_answer_request(normalized: str) -> bool:
+    return bool(re.search(_ANSWER_REQUEST_PATTERN, normalized, re.I))
+
+
+def _is_allowed_negated_answer_request(normalized: str) -> bool:
+    """Allow only clear self-denying preview-answer phrases.
+
+    Double negatives,后半句转折索要答案, and fuzzy intent remain blocked.
+    """
+    for phrase in _ALLOWED_NEGATED_ANSWER_PHRASES:
+        idx = normalized.find(phrase)
+        if idx < 0:
+            continue
+        prefix = normalized[max(0, idx - 4):idx]
+        # Reject if another negation is placed right before the self-denying phrase.
+        if any(word in prefix for word in ("不是", "并非", "没", "并未")):
+            continue
+        return True
+    return False
+
 
 def student_ai_restriction(question: str) -> str | None:
+    """Block sensitive requests. Explicit negated preview-answer requests are allowed
+    only when no privacy/grade/other sensitive rule is triggered."""
     normalized = re.sub(r"\s+", "", str(question or "")).lower()
-    if any(re.search(pattern, normalized, re.I) for pattern in _STUDENT_AI_RESTRICTED_PATTERNS):
-        return "AI 助教不能查询或推断成绩、他人信息、预习题答案、实验具体数据或标准结果。我只能解释当前实验原理，或在你忘记时提醒已发布的操作步骤。"
+
+    if _has_privacy_or_grade_request(normalized):
+        return _RESTRICTION_MESSAGE
+
+    if _is_explicit_answer_request(normalized) and not _is_allowed_negated_answer_request(normalized):
+        return _RESTRICTION_MESSAGE
+
     return None
 
 
@@ -159,24 +266,36 @@ def translate_report_frontmatter(title_zh: str, abstract_zh: str, keywords_zh: s
 
 
 def _validate_question_bank(data, count: int) -> list[dict]:
-    if not isinstance(data, list) or len(data) < count: raise ValueError("AI 题库不足")
+    if not isinstance(data, list) or len(data) < count:
+        raise ValueError("AI 题库不足")
     forbidden = ("学生姓名", "学生人数", "页面", "网页", "文件名称", "文件名", "浏览器", "登录", "密码", "课程完成率", "字体", "截图")
-    seen = set(); result = []
+    seen = set()
+    result = []
     for i, item in enumerate(data[:count]):
-        question = str(item["question"]).strip(); options = [str(x).strip() for x in item["options"]]; answer = str(item["answer"]).strip(); explanation = str(item.get("explanation", "")).strip()
+        question = str(item["question"]).strip()
+        options = [str(x).strip() for x in item["options"]]
+        answer = str(item["answer"]).strip()
+        explanation = str(item.get("explanation", "")).strip()
         normalized = re.sub(r"[\W_]+", "", question).lower()
-        if not question or normalized in seen: raise ValueError("AI 题目重复")
+        if not question or normalized in seen:
+            raise ValueError("AI 题目重复")
         seen.add(normalized)
-        if len(options) != 4 or len(set(options)) != 4 or answer not in options: raise ValueError("AI 题目结构错误")
-        if any(not option or any(word in option for word in forbidden) for option in options): raise ValueError("AI 干扰项包含无关内容")
+        if len(options) != 4 or len(set(options)) != 4 or answer not in options:
+            raise ValueError("AI 题目结构错误")
+        if any(not option or any(word in option for word in forbidden) for option in options):
+            raise ValueError("AI 干扰项包含无关内容")
         lengths = [len(option) for option in options]
-        if max(lengths) > min(lengths) * 3 + 6: raise ValueError("AI 选项长度差异过大")
-        if any(option in {"以上都对", "以上都不对", "无法判断"} for option in options): raise ValueError("AI 选项具有猜题捷径")
-        if len(explanation) < 8: raise ValueError("AI 解析过短")
+        if max(lengths) > min(lengths) * 3 + 6:
+            raise ValueError("AI 选项长度差异过大")
+        if any(option in {"以上都对", "以上都不对", "无法判断"} for option in options):
+            raise ValueError("AI 选项具有猜题捷径")
+        if len(explanation) < 8:
+            raise ValueError("AI 解析过短")
         concept_index = i // 4 + 1
         concept_id = re.sub(r"[^a-zA-Z0-9_-]+", "-", str(item.get("concept_id") or f"mother-{concept_index}").strip()).strip("-")[:64] or f"mother-{concept_index}"
         concept_title = str(item.get("concept_title") or item.get("mother_question") or f"母题方向 {concept_index}").strip()[:160]
-        shift = i % 4; options = options[shift:] + options[:shift]
+        shift = i % 4
+        options = options[shift:] + options[:shift]
         result.append({"id": f"ai-{concept_id}-{i+1}", "concept_id": concept_id, "concept_title": concept_title, "question": question, "options": options, "answer": answer, "explanation": explanation[:1200]})
     groups: dict[str, int] = {}
     for item in result:
