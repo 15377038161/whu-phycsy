@@ -65,6 +65,20 @@ AI 答复先经过 HTML 转义，再仅渲染受控的 Markdown 加粗、列表�
 
 学生进入首页后先选择班级要求数量的大实验关卡（默认至少 3 关），大关之间可以跳关。单实验内部按顺序完成页面式小关卡，允许返回已完成关复查。步骤数据表支持按需添加自定义列，列名、数据、图片、在线拟合或 Excel 兜底结果会保存并同步进入结构化报告；修改上游数据会使旧拟合失效。全部必做步骤完成后显示闯关成功提示，正式提交报告后解锁对应学习纪念证书。
 
+## 运行时可自证诊断
+
+平台提供受认证的连接诊断入口 `/diag`，登录后可执行三项诊断：
+
+- **Auth 诊断**：验证当前登录会话的 Supabase access_token 是否有效。
+- **Data 诊断**：验证当前 JWT 是否能在 Data API 的 `users` 表中找到自身映射。
+- **Runtime 诊断**（`POST /api/diag/runtime`）：返回运行时可自证的严格白名单，包括实际加载的业务后端类型（`sqlite_local` / `postgrest_remote`）、AI 配置来源（`native` / `legacy` / `unconfigured`）、代码文件哈希与构建 manifest 是否一致、当前登录 JWT 在 Data API 中可见的 enrollment 状态等。
+
+Runtime 诊断**不输出**任何密钥、JWT 内容、用户列表、主机名、URL、路径或原始异常。它仅回答：当前进程实际加载了哪条代码路径、配置是否存在、远端授权表对该 JWT 是否可见。
+
+`scripts/build.sh` 会在构建时生成 `runtime/build_manifest.json`，其中只包含选定代码文件的 SHA-256 与构建时 git HEAD；不包含环境变量或凭据。Runtime 诊断在进程加载时重新计算这些哈希，防止磁盘后改混淆。
+
+`APP_ENV` 由 `scripts/start.sh` 固定为 `preview`，因此 Coder 平台部署默认使用内置 SQLite 与本地选关逻辑；只有实际代码中存在 Data API 选关函数时 `backend_type` 才会报告 `postgrest_remote`。`APP_ENV` 本身不能证明远程业务路径，真实路径以 Runtime 诊断返回的 `backend_type` 为准。
+
 ## 验证与交付
 
 ```powershell

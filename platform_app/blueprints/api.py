@@ -6,12 +6,13 @@ from functools import wraps
 from pathlib import Path
 from urllib.parse import quote
 
-from flask import Blueprint, Response, current_app, jsonify, request, session, stream_with_context
+from flask import Blueprint, Response, current_app, jsonify, render_template, request, session, stream_with_context
 from sqlalchemy import select
 
 from ai_service import ai_ready, stream_student_question, student_ai_restriction
 
 from ..db import db_session, ready as database_ready
+from ..diag_runtime import runtime_diagnostic_payload
 from ..models import Course, Experiment, ExperimentVersion, SubmissionRevision
 from ..services.experiments import course_for_student, published_experiments
 from ..services.fitting import validate_fit_result
@@ -319,3 +320,42 @@ def diag_data():
         for row in rows
     )
     return _diag_response("ok" if mapping_exists else "forbidden")
+
+
+@bp.get("/diag")
+def diag_index():
+    """Render the connection diagnostics page with CSRF-protected forms.
+
+    Requires a logged-in session; anonymous access is denied.
+    """
+    if current_user() is None:
+        return jsonify({"error": "未登录", "diag_status": "unauthenticated"}), 401
+    return render_template("diag.html")
+
+
+@bp.post("/api/diag/runtime")
+@_login_required_json
+def diag_runtime():
+    """Return strict allow-list runtime self-attestation facts.
+
+    The response proves which code path is actually loaded, how AI is
+    configured, and whether the current JWT can see any enrollment rows.
+    No secrets, paths, hostnames, URLs, JWT claims, user lists, or raw
+    exception text are emitted.
+
+    CSRF protection is enforced by the global `protect_state_changes` hook in
+    `platform_app/__init__.py`; this endpoint does not accept anonymous requests.
+    """
+    payload = runtime_diagnostic_payload()
+    if "text/html" in request.accept_mimetypes:
+        rows = "".join(f"<tr><td>{k}</td><td><code>{v}</code></td></tr>" for k, v in payload.items())
+        html = (
+            "<!doctype html><html lang=\"zh-CN\">"
+            "<head><meta charset=\"utf-8\"><title>运行版本诊断</title></head>"
+            "<body><h1>运行版本诊断</h1>"
+            "<table border=\"1\" cellpadding=\"6\"><tr><th>字段</th><th>值</th></tr>"
+            f"{rows}</table>"
+            "<button onclick=\"history.back()\">返回</button></body></html>"
+        )
+        return Response(html, content_type="text/html; charset=utf-8")
+    return jsonify(payload)

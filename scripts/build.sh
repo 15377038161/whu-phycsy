@@ -26,4 +26,8 @@ else
 fi
 python3 scripts/verify_project.py || echo "[build] WARNING: project verification found issues (continuing)" >&2
 
+# Generate a code-integrity manifest used by the runtime self-attestation endpoint.
+# Contains only file hashes and git HEAD; no env vars or secrets.
+python3 scripts/build_manifest.py
+
 echo "Build completed successfully"

@@ -578,6 +578,19 @@ body.is-offline [data-requires-online]{opacity:.5;cursor:not-allowed}.empty-tabl
 .student-shell .selected-level-card .experiment-card-body,.student-shell .level-picker-grid .experiment-card-body{display:grid;grid-template-columns:minmax(170px,.9fr) minmax(240px,1.6fr) minmax(150px,.72fr);grid-template-rows:auto auto auto;gap:5px 18px;align-items:center;min-height:0;padding:16px 20px}
 .student-shell .experiment-level-card .level-card-kicker{grid-column:1;grid-row:1;margin:0}
 .student-shell .experiment-level-card .experiment-card-body>h3{grid-column:1;grid-row:2;margin:0;font-size:22px}
+
+/* Diagnostic page: simple, self-contained styles that do not leak secrets. */
+.diag-page{max-width:720px;margin:2rem auto;padding:0 1rem;line-height:1.6}
+.diag-container{display:grid;gap:1.5rem}
+.diag-title{font-size:1.5rem;border-bottom:1px solid #ddd;padding-bottom:.5rem;color:var(--ink)}
+.diag-section-title{font-size:1.25rem;margin:0 0 .25rem;color:var(--ink)}
+.diag-note{color:var(--muted);font-size:.875rem;margin:.25rem 0 0}
+.diag-form{margin:0;padding:1rem;border:1px solid #e5e7eb;border-radius:.5rem;background:#f9fafb}
+.diag-button{padding:.5rem 1rem;border:0;border-radius:.375rem;background:var(--blue);color:#fff;cursor:pointer}
+.diag-button:hover{background:var(--blue-dark)}
+.diag-result-table{width:100%;border-collapse:collapse;margin-top:1rem}
+.diag-result-table td,.diag-result-table th{padding:.5rem;border:1px solid #ddd;text-align:left}
+.diag-result-table th{background:#f3f4f6}
 .student-shell .experiment-level-card .experiment-card-body>p{grid-column:2;grid-row:1/4;height:auto!important;margin:0;font-size:14px!important;line-height:1.6!important;align-self:center}
 .student-shell .experiment-level-card .experiment-card-body>.score-line{grid-column:3;grid-row:1;margin:0}
 .student-shell .experiment-level-card .level-check,.student-shell .experiment-level-card .selected-level-mark{grid-column:3;grid-row:2;margin:0}

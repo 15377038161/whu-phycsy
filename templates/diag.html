@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>连接诊断</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='quantum-platform.css') }}">
+</head>
+<body class="diag-page">
+  <main class="diag-container">
+    <h1 class="diag-title">连接诊断</h1>
+    <p class="diag-note">以下诊断仅返回固定状态或运行时可自证字段，不输出任何密钥、JWT、用户列表或原始错误。</p>
+
+    <form class="diag-form" action="{{ url_for('api.diag_auth') }}" method="post">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <h2 class="diag-section-title">Supabase Auth 诊断</h2>
+      <p class="diag-note">验证当前登录会话的 access_token 是否仍有效。</p>
+      <button class="diag-button" type="submit">运行 Auth 诊断</button>
+    </form>
+
+    <form class="diag-form" action="{{ url_for('api.diag_data') }}" method="post">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <h2 class="diag-section-title">Data API 用户映射诊断</h2>
+      <p class="diag-note">验证当前 JWT 是否能在 Data API 的 users 表中找到自身映射。</p>
+      <button class="diag-button" type="submit">运行 Data 诊断</button>
+    </form>
+
+    <form class="diag-form" action="{{ url_for('api.diag_runtime') }}" method="post">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <h2 class="diag-section-title">运行版本与后端诊断</h2>
+      <p class="diag-note">返回实际加载的业务后端类型、AI 配置来源、课程可见性状态与代码哈希一致性，不含秘密或路径。</p>
+      <button class="diag-button" type="submit">运行 Runtime 诊断</button>
+    </form>
+  </main>
+</body>
+</html>

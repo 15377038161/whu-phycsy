@@ -74,10 +74,23 @@ exec python3 app.py
 
 ### 3.3 PostgREST / Data API 是否启用
 
-Data API 调用在 `da1d69e` 中仅出现在 `platform_app/supabase_client.py` 封装层以及 `platform_app/blueprints/api.py` 的诊断端点 `/api/diag/auth`、 `/api/diag/data`。它们是否生效取决于平台是否注入了 `CODER_SUPABASE_URL`、`CODER_SUPABASE_ANON_KEY`、`CODER_SUPABASE_TENANT_ID`：
+Data API 调用在 `da1d69e` 中仅出现在 `platform_app/supabase_client.py` 封装层以及 `platform_app/blueprints/api.py` 的诊断端点 `/api/diag/auth`、 `/api/diag/data`、`/api/diag/runtime`。它们是否生效取决于平台是否注入了 `CODER_SUPABASE_URL`、`CODER_SUPABASE_ANON_KEY`、`CODER_SUPABASE_TENANT_ID`：
 
 - 若注入完整：诊断端点可以与 Supabase Auth / PostgREST 通信；
 - 若未注入：`_env_ok()` 返回 `False`，诊断端点返回 `missing_env`。
+
+### 3.4 `APP_ENV` 不能证明远程业务路径
+
+`scripts/start.sh` 固定 `APP_ENV=preview` 仅决定默认数据库是 SQLite；它**不能**证明选关逻辑一定走本地 SQLite 或 PostgREST。真实业务路径由实际加载的代码决定，必须通过运行时自证诊断确认。新增端点 `POST /api/diag/runtime` 会返回：
+
+- `backend_type`: `sqlite_local` 或 `postgrest_remote`
+- `app_env`: 当前进程实际 `APP_ENV`
+- `manifest_head` / `manifest_match`: 构建时 git HEAD 与代码哈希一致性
+- `ai_source`: `native` / `legacy` / `unconfigured`
+- `enrollment_status`: `missing_env` / `no_token` / `invalid` / `forbidden` / `unreachable` / `empty` / `visible`
+- `has_visible_enrollment`: 布尔
+
+该端点不输出密钥、JWT、用户列表、主机名、URL、路径或原始异常。
 
 ### 3.4 关键结论
 
@@ -145,8 +158,9 @@ Data API 调用在 `da1d69e` 中仅出现在 `platform_app/supabase_client.py` �
 | 1 | 线上容器内 `git rev-parse HEAD` | 平台运维/沙箱 | 否 |
 | 2 | 线上 `app.log` 最近 50 行搜索 `selection_summary` / `student_selection_summary` / `missing_initialization` | 平台运维 | 否 |
 | 3 | 线上 `/api/diag/auth` 与 `/api/diag/data` 在登录态下返回的状态 | 用户/教师 | 否 |
-| 4 | 平台侧确认 `runtime/platform.db` 是否持久卷 | 平台运维 | 否 |
-| 5 | PolarDB 只读查询 `enrollments` 行数与 RLS 状态 | 平台运维 | 否 |
+| 4 | 线上 `/api/diag/runtime` 在登录态下返回的 `backend_type`、`ai_source`、`enrollment_status` | 用户/教师 | 否 |
+| 5 | 平台侧确认 `runtime/platform.db` 是否持久卷 | 平台运维 | 否 |
+| 6 | PolarDB 只读查询 `enrollments` 行数与 RLS 状态 | 平台运维 | 否 |
 
 ---
 
@@ -230,7 +244,19 @@ Data API 调用在 `da1d69e` 中仅出现在 `platform_app/supabase_client.py` �
    - 预期：`{"status":"ok"}` 或 `"missing_env"` / `"no_token"` / `"invalid"` / `"forbidden"`。
    - 若返回 `"forbidden"`，说明 JWT UUID 与远端 `users.auth_user_id` 未对齐，需要检查 `chaoxing_callback` 是否写入了 `auth_user_id`。
 
-5. **确认 AI 配置状态**
+5. **确认 Runtime 自证状态**
+   - 以学生身份登录后访问 `/diag` 页面，点击"运行 Runtime 诊断"，或调用：
+     ```bash
+     curl -X POST -H "X-CSRFToken: <csrf>" https://<线上域名>/api/diag/runtime
+     ```
+   - 关键字段预期：
+     - `backend_type`: `sqlite_local`（若部署为 `da1d69e`）
+     - `ai_source`: `native` 或 `legacy`（`unconfigured` 表示 AI 未就绪）
+     - `enrollment_status`: `empty` / `visible` / `forbidden` / `missing_env`
+     - `manifest_match`: `true`
+   - 若 `backend_type` 为 `postgrest_remote`，说明线上实际加载的是数据库候选路径，不是 `da1d69e`。
+
+6. **确认 AI 配置状态**
    - 检查环境变量存在性（不输出值）：
      ```bash
      env | grep -E '^(CODER_CODING_MODEL|AI_)' | cut -d= -f1
