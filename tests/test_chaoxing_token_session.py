@@ -1094,3 +1094,235 @@ def test_sso_identity_conflict_rejects_login(app_for_token, supabase_env, monkey
         # 学生 A 的绑定保持不变
         student_a_refreshed = db_session().get(User, student_a.id)
         assert student_a_refreshed.chaoxing_cxid == "conflict-identity"
+
+
+def _sid_from_location(location: str) -> str:
+    return location.split("_sid=")[-1].split("&")[0] if "_sid=" in location else ""
+
+
+def _make_fakes_for_identity(identity: dict, exchange_resp: dict, monkeypatch):
+    """为指定 SSO 身份构造 httpx post/get 的假实现。"""
+
+    def fake_post(url, *, json, headers, timeout):
+        if "/exchange" in url:
+            return _FakeResponse(200, exchange_resp)
+        return _FakeResponse(500, {})
+
+    def fake_get(url, *, headers, timeout):
+        if "/auth/v1/user" in url:
+            return _FakeResponse(200, _make_verified_user(**identity))
+        return _FakeResponse(500, {})
+
+    monkeypatch.setattr("platform_app.blueprints.auth.httpx.post", fake_post)
+    monkeypatch.setattr("platform_app.blueprints.auth.httpx.get", fake_get)
+
+
+def test_sso_or_query_multiple_matches_rejects_login_order_a(app_for_token, supabase_env, monkeypatch):
+    """OR 条件命中两个不同本地账号时拒绝登录（username 匹配者先插入）。"""
+    from platform_app.db import db_session
+    from platform_app.models import User
+
+    exchange_resp = _make_exchange_response("access-multi-a", "refresh-multi-a")
+    identity = {"cxid": "multi-match", "realname": "测试用户", "metadata": {}}
+    _make_fakes_for_identity(identity, exchange_resp, monkeypatch)
+
+    with app_for_token.app_context():
+        user_by_username = User(
+            id="user-by-username",
+            username="cx_multi-match",
+            name="用户名匹配",
+            role="student",
+            password_hash="!test!",
+            active=True,
+            chaoxing_cxid="old-cxid",
+        )
+        user_by_cxid = User(
+            id="user-by-cxid",
+            username="other-user",
+            name="绑定键匹配",
+            role="student",
+            password_hash="!test!",
+            active=True,
+            chaoxing_cxid="multi-match",
+        )
+        db_session().add_all([user_by_username, user_by_cxid])
+        db_session().commit()
+
+    with app_for_token.test_client() as client:
+        resp = client.get("/auth/chaoxing/callback?code=fake-code", follow_redirects=False)
+
+    assert resp.status_code == 302
+    assert "/login" in resp.headers.get("Location", "")
+
+    with app_for_token.app_context():
+        assert db_session().get(User, user_by_username.id).chaoxing_cxid == "old-cxid"
+        assert db_session().get(User, user_by_cxid.id).chaoxing_cxid == "multi-match"
+
+
+def test_sso_or_query_multiple_matches_rejects_login_order_b(app_for_token, supabase_env, monkeypatch):
+    """OR 条件命中两个不同本地账号时拒绝登录（cxid 匹配者先插入）。"""
+    from platform_app.db import db_session
+    from platform_app.models import User
+
+    exchange_resp = _make_exchange_response("access-multi-b", "refresh-multi-b")
+    identity = {"cxid": "multi-match-b", "realname": "测试用户", "metadata": {}}
+    _make_fakes_for_identity(identity, exchange_resp, monkeypatch)
+
+    with app_for_token.app_context():
+        user_by_cxid = User(
+            id="user-by-cxid-b",
+            username="other-user-b",
+            name="绑定键匹配",
+            role="student",
+            password_hash="!test!",
+            active=True,
+            chaoxing_cxid="multi-match-b",
+        )
+        user_by_username = User(
+            id="user-by-username-b",
+            username="cx_multi-match-b",
+            name="用户名匹配",
+            role="student",
+            password_hash="!test!",
+            active=True,
+            chaoxing_cxid="old-cxid-b",
+        )
+        db_session().add_all([user_by_cxid, user_by_username])
+        db_session().commit()
+
+    with app_for_token.test_client() as client:
+        resp = client.get("/auth/chaoxing/callback?code=fake-code", follow_redirects=False)
+
+    assert resp.status_code == 302
+    assert "/login" in resp.headers.get("Location", "")
+
+    with app_for_token.app_context():
+        assert db_session().get(User, user_by_cxid.id).chaoxing_cxid == "multi-match-b"
+        assert db_session().get(User, user_by_username.id).chaoxing_cxid == "old-cxid-b"
+
+
+def test_sso_existing_cxid_binding_not_overwritten(app_for_token, supabase_env, monkeypatch):
+    """账号已绑定其他超星身份时，SSO 不得以新身份覆盖。"""
+    from platform_app.db import db_session
+    from platform_app.models import Enrollment, User
+
+    exchange_resp = _make_exchange_response("access-rebind", "refresh-rebind")
+    identity = {"cxid": "new-cxid", "realname": "测试用户", "metadata": {}}
+    _make_fakes_for_identity(identity, exchange_resp, monkeypatch)
+
+    with app_for_token.app_context():
+        teacher, course = _seed_teacher_and_course(db_session())
+        user = User(
+            id="rebind-user",
+            username="cx_new-cxid",
+            name="旧用户",
+            role="student",
+            password_hash="!test!",
+            active=True,
+            chaoxing_cxid="old-cxid",
+        )
+        db_session().add(user)
+        db_session().add(Enrollment(course_id=course.id, student_id=user.id))
+        db_session().commit()
+
+    with app_for_token.test_client() as client:
+        resp = client.get("/auth/chaoxing/callback?code=fake-code", follow_redirects=False)
+
+    assert resp.status_code == 302
+    assert "/login" in resp.headers.get("Location", "")
+
+    with app_for_token.app_context():
+        refreshed = db_session().get(User, user.id)
+        assert refreshed.chaoxing_cxid == "old-cxid"
+
+
+def test_sso_empty_identity_clears_existing_session(app_for_token, supabase_env, monkeypatch):
+    """空身份键时强制清理旧会话，避免残留 user_id/令牌。"""
+    from platform_app.db import db_session
+    from platform_app.models import User
+
+    teacher_identity = {"cxid": "empty-teacher", "realname": "测试教师", "metadata": {"role": "teacher"}}
+    teacher_exchange = _make_exchange_response("access-empty-teacher", "refresh-empty-teacher")
+    _make_fakes_for_identity(teacher_identity, teacher_exchange, monkeypatch)
+
+    with app_for_token.app_context():
+        teacher = User(
+            id="empty-teacher",
+            username="cx_empty-teacher",
+            name="测试教师",
+            role="teacher",
+            password_hash="!test!",
+            active=True,
+            must_change_password=False,
+            chaoxing_cxid="empty-teacher",
+        )
+        db_session().add(teacher)
+        db_session().commit()
+
+    with app_for_token.test_client() as client:
+        resp1 = client.get("/auth/chaoxing/callback?code=teacher", follow_redirects=False)
+        assert resp1.status_code == 302
+        assert "/teacher" in resp1.headers.get("Location", "")
+        old_sid = _sid_from_location(resp1.headers.get("Location", ""))
+        assert old_sid
+
+        with app_for_token.app_context():
+            old_row = db_session().get(AppSession, old_sid)
+            assert old_row is not None
+            assert old_row.data.get("user_id") is not None
+            assert old_row.data.get("cx_access_token") is not None
+
+        # 第二次回调返回空身份键
+        def empty_get(url, *, headers, timeout):
+            if "/auth/v1/user" in url:
+                return _FakeResponse(200, {"id": None, "sub": None, "user_metadata": {}})
+            return _FakeResponse(500, {})
+
+        monkeypatch.setattr("platform_app.blueprints.auth.httpx.get", empty_get)
+        resp2 = client.get("/auth/chaoxing/callback?code=empty", follow_redirects=False)
+        assert resp2.status_code == 302
+        assert "/login" in resp2.headers.get("Location", "")
+
+        with app_for_token.app_context():
+            row = db_session().get(AppSession, old_sid)
+            assert row is not None
+            assert row.data.get("user_id") is None
+            assert row.data.get("cx_access_token") is None
+            assert row.data.get("cx_refresh_token") is None
+
+
+def test_sso_roster_name_not_overwritten_by_metadata(app_for_token, supabase_env, monkeypatch):
+    """教师导入的名单学生姓名不得被 SSO 可编辑元数据覆盖。"""
+    from platform_app.db import db_session
+    from platform_app.models import Enrollment, User
+
+    exchange_resp = _make_exchange_response("access-roster-name", "refresh-roster-name")
+    identity = {"cxid": "roster-id", "realname": "SSO新姓名", "metadata": {}}
+    _make_fakes_for_identity(identity, exchange_resp, monkeypatch)
+
+    with app_for_token.app_context():
+        teacher, course = _seed_teacher_and_course(db_session())
+        student = User(
+            id="roster-student",
+            username="roster-student",
+            name="教师导入姓名",
+            role="student",
+            password_hash="!test!",
+            active=True,
+            chaoxing_cxid="roster-id",
+        )
+        db_session().add(student)
+        db_session().add(Enrollment(course_id=course.id, student_id=student.id))
+        db_session().commit()
+
+    with app_for_token.test_client() as client:
+        resp = client.get("/auth/chaoxing/callback?code=fake-code", follow_redirects=False)
+
+    assert resp.status_code == 302
+    location = resp.headers.get("Location", "")
+    assert "/student/home" in location
+
+    with app_for_token.app_context():
+        refreshed = db_session().get(User, student.id)
+        assert refreshed.name == "教师导入姓名"
+        assert refreshed.chaoxing_cxid == "roster-id"

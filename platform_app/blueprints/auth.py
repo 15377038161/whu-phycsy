@@ -7,7 +7,7 @@ from urllib.parse import urlsplit
 
 import httpx
 from flask import Blueprint, current_app, flash, redirect, render_template, request, send_file, session, url_for
-from sqlalchemy import or_, select
+from sqlalchemy import select
 from werkzeug.security import check_password_hash
 
 from ..db import db_session, transaction
@@ -478,8 +478,10 @@ def chaoxing_callback():
     identity_key = str(verified_user.get("id") or verified_user.get("sub") or "").strip()
     metadata = verified_user.get("user_metadata") or {}
     realname = str(metadata.get("realname") or metadata.get("name") or "").strip()
+    # 空身份键：强制清理所有会话
     if not identity_key:
         current_app.logger.warning("chaoxing exchange: no verified identity in user")
+        session.clear()
         flash("未能获取可信身份信息，请联系管理员绑定账号后再登录。", "error")
         return _public_redirect("auth.login")
 
@@ -496,11 +498,28 @@ def chaoxing_callback():
     # 禁止通过 user_metadata 中的姓名/学号匹配、重绑他人名单用户，防止账号接管。
     username = f"cx_{identity_key}"
     db = db_session()
-    user = db.scalar(
-        select(User).where(
-            or_(User.username == username, User.chaoxing_cxid == identity_key)
-        )
-    )
+    # 统一查询所有匹配项，避免 OR 查询在不同数据库/执行计划下返回随机结果。
+    username_matches = db.scalars(select(User).where(User.username == username)).all()
+    cxid_matches = db.scalars(select(User).where(User.chaoxing_cxid == identity_key)).all()
+    all_matches = list({u.id: u for u in list(username_matches) + list(cxid_matches)}.values())
+
+    # 多候选匹配：拒绝冲突绑定
+    if len(all_matches) > 1:
+        session.clear()
+        flash("该超星身份存在多个平台账号绑定冲突，请联系管理员处理。", "error")
+        return _public_redirect("auth.login")
+
+    # 唯一候选匹配：检查绑定一致性
+    user = all_matches[0] if all_matches else None
+    if user is not None:
+        # 拒绝重绑：已有非空绑定且与当前身份不一致
+        if user.chaoxing_cxid and user.chaoxing_cxid != identity_key:
+            session.clear()
+            flash("该账号已绑定其他超星身份，请联系管理员处理。", "error")
+            return _public_redirect("auth.login")
+        # 禁止用元数据覆盖教师导入的姓名（非 cx_ 用户名为教师/管理员导入的名单账号）
+        if not user.username.startswith("cx_") and realname and user.name != realname:
+            realname = user.name
 
     # 教师身份仅由本地数据库的合法授权记录决定；超星 SSO 不会创建或升级教师。
     if user is not None and user.role == "teacher" and user.active:
@@ -528,27 +547,6 @@ def chaoxing_callback():
     ):
         session.clear()
         flash("你尚未被加入任何课程，请联系任课教师导入名单后再登录。", "error")
-        return _public_redirect("auth.login")
-
-    # 通过授权检查后，统一在事务中写入用户映射、更新与审计。
-    # 冲突检测前置：同一超星身份不能被多个本地账号竞争。
-    conflict_user = db.scalar(
-        select(User).where(
-            User.chaoxing_cxid == identity_key,
-            User.id != user.id,
-        )
-    )
-    if conflict_user is not None:
-        with transaction() as db:
-            db.add(AuditEvent(
-                actor_id=user.id,
-                action="login.chaoxing.rejected",
-                entity_type="user",
-                entity_id=user.id,
-                detail={"reason": "identity conflict", "ip": request.remote_addr or "unknown"},
-            ))
-        session.clear()
-        flash("该超星身份已被其他平台账号绑定，请联系管理员处理。", "error")
         return _public_redirect("auth.login")
 
     with transaction() as db:
