@@ -585,8 +585,9 @@ body.is-offline [data-requires-online]{opacity:.5;cursor:not-allowed}.empty-tabl
 .diag-title{font-size:1.5rem;border-bottom:1px solid #ddd;padding-bottom:.5rem;color:var(--ink)}
 .diag-section-title{font-size:1.25rem;margin:0 0 .25rem;color:var(--ink)}
 .diag-note{color:var(--muted);font-size:.875rem;margin:.25rem 0 0}
-.diag-form{margin:0;padding:1rem;border:1px solid #e5e7eb;border-radius:.5rem;background:#f9fafb}
+.diag-page .diag-form{margin:0;padding:1rem;border:1px solid #e5e7eb;border-radius:.5rem;background:#f9fafb}
 .diag-button{padding:.5rem 1rem;border:0;border-radius:.375rem;background:var(--blue);color:#fff;cursor:pointer}
+@media(max-width:720px){.site-header{gap:10px;padding-left:12px;padding-right:12px}.site-header .brand{gap:6px}.site-header .brand b{font-size:12px}.site-header .brand small{font-size:7px}.site-header .primary-nav{gap:10px}.site-header .primary-nav a{font-size:10px}.site-header .user-actions{gap:4px}.site-header .icon-button{padding:4px}}
 .diag-button:hover{background:var(--blue-dark)}
 .diag-result-table{width:100%;border-collapse:collapse;margin-top:1rem}
 .diag-result-table td,.diag-result-table th{padding:.5rem;border:1px solid #ddd;text-align:left}
