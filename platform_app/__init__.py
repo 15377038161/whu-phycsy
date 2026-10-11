@@ -184,16 +184,44 @@ def create_app(test_config: dict | None = None) -> Flask:
             return False
         return True
 
+    def _same_origin_redirect_url(location: str, public_base: str) -> str | None:
+        """将重定向 Location 解析为与 public_base 同源的绝对 URL。
+
+        - 根相对路径：拼接 public_base 后校验同源。
+        - 绝对 URL：直接校验同源（用于 OAuth 等已有绝对地址场景）。
+        - 协议相对 URL（//...）或无法识别的路径：拒绝，返回 None。
+
+        返回 None 表示不应附加票据；调用方应保持原 Location 不变。
+        """
+        if not location:
+            return None
+        if location.startswith("//"):
+            return None
+        if location.startswith("/"):
+            absolute = public_base.rstrip("/") + location
+        elif location.startswith(("http://", "https://")):
+            absolute = location
+        else:
+            return None
+        if _is_app_origin(absolute, public_base):
+            return absolute
+        return None
+
     @app.after_request
     def propagate_sid(response):
-        """Keep the session ticket alive across redirects and page URLs.
+        """Keep the session ticket alive across same-origin redirects.
 
         The proxy strips cookies, so the _sid ticket must travel in the URL.
-        Redirects get the ticket appended to Location; page propagation for
-        links/forms is handled client-side by static/sid.js.
+        Redirects get the ticket appended to a safe, same-origin absolute URL;
+        page propagation for links/forms is handled client-side by static/sid.js.
 
-        安全：仅对根相对 URL 或与 APP_PUBLIC_BASE_URL 同源的绝对 URL 附加 _sid；
-        外站 OAuth 等绝对跳转不附加，防止票据泄露。
+        安全：
+        - 仅在响应为 3xx 且已有 _sid 时处理；
+        - 使用启动时解析并缓存的公开基址（APP_PUBLIC_BASE_URL），不依赖请求周期的
+          Host / X-Forwarded-Host / X-Forwarded-Prefix；
+        - 根相对 Location 会先拼接为 public_base 下的绝对 URL，避免代理把内部路由前缀
+          （如 /sandboxes/<id>/proxy/<port>）重写到浏览器可见地址；
+        - 外站 / 协议相对 / 非同源绝对跳转均不附加票据，防止 _sid 泄露。
 
         注意：普通业务请求（非重定向）直接返回，不在 after_request 中解析公开基址，
         避免 OAuth 基址配置错误污染正常页面响应。
@@ -202,14 +230,17 @@ def create_app(test_config: dict | None = None) -> Flask:
         if not sid or response.status_code not in {301, 302, 303, 307, 308}:
             return response
         location = response.headers.get("Location", "")
-        if not location or location.startswith("//") or "_sid=" in location:
+        if not location or "_sid=" in location:
             return response
-        # 使用启动时解析并缓存的公开基址，避免在请求周期再次解析并抛异常。
+        # 使用启动时解析并缓存的公开基址；缺失时 fail closed，不传播票据。
         public_base = app.config.get("APP_PUBLIC_BASE_URL", "")
-        root_relative = location.startswith("/")
-        if root_relative or (public_base and _is_app_origin(location, public_base)):
-            sep = "&" if "?" in location else "?"
-            response.headers["Location"] = f"{location}{sep}_sid={sid}"
+        if not public_base:
+            return response
+        safe_url = _same_origin_redirect_url(location, public_base)
+        if safe_url is None:
+            return response
+        sep = "&" if "?" in safe_url else "?"
+        response.headers["Location"] = f"{safe_url}{sep}_sid={sid}"
         return response
 
     @app.before_request
