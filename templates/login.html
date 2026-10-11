@@ -14,6 +14,15 @@
   <div class="login-form-side">
     <form class="login-card" method="post" action="{{ url_for('auth.login') }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+      <div class="flash-messages" role="alert" aria-live="polite">
+        {% for category, message in messages %}
+        <div class="flash-message flash-{{ category }}">{{ message }}</div>
+        {% endfor %}
+      </div>
+      {% endif %}
+      {% endwith %}
       <div class="login-role-tabs" role="tablist" aria-label="选择登录身份">
         <button type="button" role="tab" aria-selected="true" data-login-role="student">学生端</button>
         <button type="button" role="tab" aria-selected="false" data-login-role="teacher">教师端</button>
