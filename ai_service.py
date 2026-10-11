@@ -184,7 +184,9 @@ def _is_explicit_answer_request(normalized: str) -> bool:
 def _is_allowed_negated_answer_request(normalized: str) -> bool:
     """Allow only clear self-denying preview-answer phrases.
 
-    Double negatives,后半句转折索要答案, and fuzzy intent remain blocked.
+    After removing the negated phrase, the rest of the sentence must not
+    contain another explicit answer request. Double negatives and后半句转折
+    remain blocked.
     """
     for phrase in _ALLOWED_NEGATED_ANSWER_PHRASES:
         idx = normalized.find(phrase)
@@ -193,6 +195,10 @@ def _is_allowed_negated_answer_request(normalized: str) -> bool:
         prefix = normalized[max(0, idx - 4):idx]
         # Reject if another negation is placed right before the self-denying phrase.
         if any(word in prefix for word in ("不是", "并非", "没", "并未")):
+            continue
+        # Remove the negated phrase and check the remainder for any new answer request.
+        remainder = normalized[:idx] + normalized[idx + len(phrase):]
+        if _is_explicit_answer_request(remainder):
             continue
         return True
     return False
