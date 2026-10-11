@@ -155,3 +155,42 @@ Data API 验证与 `services`/`blueprints` 迁移必须等认证接入后才可�
 - 重新生成：`cd projects/db-schema && pnpm drizzle-kit generate`，核对外键前缀后追加 GRANT 再执行。
 - 已执行迁移不可修改；RLS/GRANT 变更必须生成新迁移文件。
 - 该目录仅用于生成建表 SQL，不参与 Flask 运行与交付包。
+
+## 11. 经验说明：snapshot 部署、无 git 环境与模型注入边界
+
+### 11.1 snapshot 选版本与无 git 环境
+
+平台面板部署时通常按提交 snapshot 打包，构建镜像中**不会保留 `.git` 目录**。因此：
+
+- `scripts/build_manifest.py` 在打包阶段运行，可捕获当时 `git rev-parse HEAD`；
+- 若构建流程未执行 `build_manifest.py`，或部署包从 zip/snapshot 解压后无 git，
+  运行时 `manifest_head` 会回退为 `unknown`；
+- `manifest_match: True` 只说明 **manifest 内部记录的文件哈希与进程启动时加载的文件哈希一致**，
+  不等于“运行包等于某次审核提交”。
+
+**验证运行包等于审核源码的可靠方法**：用 `/api/diag/runtime` 返回的 `loaded_sha256`，
+  与 `git show <审核提交SHA>:<文件路径> | sha256sum` 逐一比对。
+  例如 `9a348c3` 部署后，线上 `loaded_sha256` 与本地 `git show 9a348c3:...` 完全一致，
+  可确认运行包就是该次审核源码，无需依赖 `manifest_head`。
+
+### 11.2 模型注入边界
+
+AI 模型配置由平台运行时注入，**不得进入任何构建产物、manifest 或 Git 历史**：
+
+- 优先使用平台原生变量 `CODER_CODING_MODEL_BASE_URL` / `CODER_CODING_MODEL_API_KEY` /
+  `CODER_CODING_MODEL`；
+- `/api/diag/runtime` 仅返回 `ai_native_vars_present`（布尔）与 `ai_source`（native/legacy/unconfigured），
+  不输出 URL、Key 或模型名；
+- `scripts/build_manifest.py` 只记录文件哈希与 git HEAD，不读取任何 `AI_*` 或
+  `CODER_CODING_MODEL_*` 变量；
+- 生产/预览的 `.env`、Key CSV、临时 Key 不得进入交付包或日志。
+
+### 11.3 运行时自证边界
+
+`platform_app/diag_runtime.py` 在应用进程**启动导入时**即计算文件哈希，因此：
+
+- `loaded_sha256` 是**启动文件快照**，反映的是磁盘源码被 Python 加载时的状态；
+- 它不能证明已编译字节码、启动后的 monkey-patch 或内存中热更新的完整性；
+- 应将它作为“运行包与某次提交源码是否一致”的**必要非充分**检查，配合 Git 比对使用。
+
+> 后续业务 commit 可直接把这些说明随代码一起提交，不需要单独为此重新部署。
