@@ -708,15 +708,15 @@ body.is-offline [data-requires-online]{opacity:.5;cursor:not-allowed}.empty-tabl
   display: inline-block;
 }
 
-/* 登录页表单内 flash 提示 */
-.flash-messages {
+/* 登录页表单内 flash 提示：限定在 .login-card 作用域，避免与全局 .flash-stack 冲突 */
+.login-card .flash-messages {
   margin: 0 0 1rem 0;
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
   width: 100%;
 }
-.flash-message {
+.login-card .flash-message {
   padding: 0.75rem 1rem;
   border-radius: 0.5rem;
   font-size: 0.875rem;
@@ -726,12 +726,12 @@ body.is-offline [data-requires-online]{opacity:.5;cursor:not-allowed}.empty-tabl
   box-sizing: border-box;
   max-width: 100%;
 }
-.flash-message.flash-error {
+.login-card .flash-message.flash-error {
   background: rgba(239, 68, 68, 0.12);
   color: #991b1b;
   border: 1px solid rgba(239, 68, 68, 0.3);
 }
-.flash-message.flash-success {
+.login-card .flash-message.flash-success {
   background: rgba(34, 197, 94, 0.12);
   color: #166534;
   border: 1px solid rgba(34, 197, 94, 0.3);
