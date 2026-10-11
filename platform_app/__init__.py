@@ -13,6 +13,7 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 
 from .db import init_database
 from .logging_utils import after_request_log, before_request_log, setup_logging, teardown_request_log
+from .session_store import TicketSessionInterface, current_sid
 
 
 def _load_env_files() -> str:
@@ -149,8 +150,6 @@ def create_app(test_config: dict | None = None) -> Flask:
     app.register_blueprint(teacher_bp)
     app.register_blueprint(api_bp)
 
-    from .session_store import TicketSessionInterface, current_sid
-
     app.session_interface = TicketSessionInterface()
 
     def csrf_token() -> str:
@@ -168,43 +167,32 @@ def create_app(test_config: dict | None = None) -> Flask:
     def _default_port(scheme: str) -> int | None:
         return 443 if scheme == "https" else 80 if scheme == "http" else None
 
-    def _is_app_origin(location: str, public_base: str) -> bool:
-        """严格校验 location 与 public_base 同源（scheme/hostname/port），拒绝 userinfo/外站/协议相对 URL。"""
-        parsed = urlsplit(location)
-        if parsed.username is not None or parsed.password is not None:
-            return False
-        if not parsed.scheme or not parsed.netloc:
-            return False
-        base = urlsplit(public_base)
-        if parsed.scheme != base.scheme:
-            return False
-        if (parsed.hostname or "").casefold() != (base.hostname or "").casefold():
-            return False
-        if (parsed.port or _default_port(parsed.scheme)) != (base.port or _default_port(base.scheme)):
-            return False
-        return True
-
     def _is_same_origin(location: str, public_base: str) -> bool:
         """严格校验 location 与 public_base 同源（scheme/hostname/port）。
 
-        拒绝 userinfo、空 scheme/netloc、异常端口和协议差异。location 必须是已解析的
-        绝对 URL。
+        拒绝 userinfo、空 scheme/netloc、非 http(s) scheme、异常端口和协议差异。
+        location 必须是已解析的绝对 URL；调用方需捕获 ValueError。
         """
         parsed = urlsplit(location)
         if parsed.username is not None or parsed.password is not None:
             return False
-        if not parsed.scheme or not parsed.netloc:
-            return False
         if parsed.scheme not in {"http", "https"}:
+            return False
+        if not parsed.netloc:
             return False
         base = urlsplit(public_base)
         if parsed.scheme != base.scheme:
             return False
         if (parsed.hostname or "").casefold() != (base.hostname or "").casefold():
             return False
-        if (parsed.port or _default_port(parsed.scheme)) != (base.port or _default_port(base.scheme)):
-            return False
-        return True
+        # 显式默认端口：port 为 None 时使用协议默认端口；port=0 是显式值，不等于默认。
+        parsed_port = parsed.port
+        base_port = base.port
+        if parsed_port is None:
+            parsed_port = _default_port(parsed.scheme)
+        if base_port is None:
+            base_port = _default_port(base.scheme)
+        return parsed_port == base_port
 
     def _set_sid_in_query(location: str, sid: str | None) -> str:
         """在 URL query 级别添加或移除 _sid，保留其它参数、顺序、path 和 fragment。"""
@@ -214,45 +202,68 @@ def create_app(test_config: dict | None = None) -> Flask:
             qs.append(("_sid", sid))
         return urlunsplit((parsed.scheme, parsed.netloc, parsed.path, urlencode(qs), parsed.fragment))
 
-    def _sanitize_redirect(location: str, public_base: str) -> tuple[str, bool] | None:
+    def _sanitize_redirect(location: str, public_base: str) -> tuple[str, bool]:
         """解析并重定向 Location，返回 (处理后的 Location, 是否同源)。
 
-        - 根相对路径：拼接 public_base 后判断同源；同源则返回绝对 URL，否则仅移除
-          可能存在的 _sid 后返回原根相对 URL。
-        - 协议相对 URL（//host/...）：按 public_base 的 scheme 解析并判断同源；非同源
-          时仅移除 _sid 后返回原协议相对 URL。
-        - 绝对 URL：直接判断同源；非同源时移除 _sid。
-        - 控制字符、反斜杠、userinfo、未知 scheme 返回 None，表示无法安全重写，
-          保持原 Location 不变（应用不应生成这类地址）。
+        - 根相对路径：拼接 public_base 后判断同源；同源则返回绝对 URL。
+        - 协议相对 URL（//host/...）：按 public_base 的 scheme 解析并判断同源。
+        - 绝对 URL：直接判断同源。
+        - 对安全可解析但非同源的地址，仅移除 _sid 查询参数，不泄露票据。
+        - 对无法安全解析的地址（userinfo、控制字符、反斜杠、未知 scheme、无效端口、
+          解析异常、根相对非同源）抛出 ValueError，由调用方取消重定向。
         """
         if not location:
-            return None
+            raise ValueError("empty location")
         if "\\" in location or "\x00" in location or any(ord(ch) < 32 for ch in location):
-            return None
-        parsed = urlsplit(location)
+            raise ValueError("unsafe characters")
+        try:
+            parsed = urlsplit(location)
+        except ValueError as exc:
+            raise ValueError("parse error") from exc
         if parsed.username is not None or parsed.password is not None:
-            return None
+            raise ValueError("userinfo")
         base = urlsplit(public_base)
 
         if location.startswith("//"):
             canonical = f"{base.scheme}://{location[2:]}"
-            if _is_same_origin(canonical, public_base):
+            try:
+                same = _is_same_origin(canonical, public_base)
+            except ValueError as exc:
+                raise ValueError("invalid canonical origin") from exc
+            if same:
                 return _set_sid_in_query(canonical, None), True
             return _set_sid_in_query(location, None), False
 
         if location.startswith("/"):
             canonical = public_base.rstrip("/") + location
-            if _is_same_origin(canonical, public_base):
+            try:
+                same = _is_same_origin(canonical, public_base)
+            except ValueError as exc:
+                raise ValueError("invalid canonical origin") from exc
+            if same:
                 return _set_sid_in_query(canonical, None), True
-            return _set_sid_in_query(location, None), False
+            # 根相对路径拼接公开基址后不应非同源；否则视为配置异常。
+            raise ValueError("root-relative not same origin")
 
         if location.startswith(("http://", "https://")):
-            if _is_same_origin(location, public_base):
+            try:
+                same = _is_same_origin(location, public_base)
+            except ValueError as exc:
+                raise ValueError("invalid origin") from exc
+            if same:
                 return _set_sid_in_query(location, None), True
             return _set_sid_in_query(location, None), False
 
-        # 其它 scheme（mailto:, javascript: 等）不处理，保持原样。
-        return None
+        # 其它 scheme（mailto:, javascript: 等）拒绝处理。
+        raise ValueError("unsupported scheme")
+
+    def _cancel_redirect(response, body: bytes = b""):
+        """取消重定向并返回 400，移除 Location，不保留原地址。"""
+        response.status_code = 400
+        response.headers.pop("Location", None)
+        response.set_data(body)
+        response.content_type = "text/plain; charset=utf-8"
+        return response
 
     @app.after_request
     def propagate_sid(response):
@@ -263,33 +274,30 @@ def create_app(test_config: dict | None = None) -> Flask:
         page propagation for links/forms is handled client-side by static/sid.js.
 
         安全：
-        - 仅在响应为 3xx 且已有 _sid 时处理；
+        - 所有 3xx 响应统一审查 Location，无论当前是否持有 _sid；
         - 使用启动时解析并缓存的公开基址（APP_PUBLIC_BASE_URL），不依赖请求周期的
           Host / X-Forwarded-Host / X-Forwarded-Prefix；
         - 根相对 Location 会先拼接为 public_base 下的绝对 URL，避免代理把内部路由前缀
           （如 /sandboxes/<id>/proxy/<port>）重写到浏览器可见地址；
-        - 对非同源地址不附加新票据，且会先移除 Location 中已存在的 _sid 参数，
-          防止会话票据随外站/协议相对跳转泄露；
-        - 拒绝控制字符、反斜杠、userinfo 和未知 scheme。
-
-        注意：普通业务请求（非重定向）直接返回，不在 after_request 中解析公开基址，
-        避免 OAuth 基址配置错误污染正常页面响应。
+        - 对安全可解析但非同源的地址，移除已有 _sid 后原样返回，不附加新票据；
+        - 对无法安全解析的地址（userinfo、控制字符、反斜杠、未知 scheme、无效端口、
+          解析异常、根相对非同源）取消重定向并返回 400，不保留原 Location；
+        - 无可信公开基址时不传播任何票据，取消重定向并返回 400。
         """
-        sid = current_sid()
-        if not sid or response.status_code not in {301, 302, 303, 307, 308}:
+        if response.status_code not in {301, 302, 303, 307, 308}:
             return response
         location = response.headers.get("Location", "")
         if not location:
             return response
-        # 使用启动时解析并缓存的公开基址；缺失时 fail closed，不传播票据。
         public_base = app.config.get("APP_PUBLIC_BASE_URL", "")
         if not public_base:
-            return response
-        result = _sanitize_redirect(location, public_base)
-        if result is None:
-            return response
-        sanitized, is_same_origin = result
-        if is_same_origin:
+            return _cancel_redirect(response, b"Missing trusted public base")
+        try:
+            sanitized, is_same_origin = _sanitize_redirect(location, public_base)
+        except ValueError:
+            return _cancel_redirect(response, b"Unsafe redirect")
+        sid = current_sid()
+        if is_same_origin and sid:
             response.headers["Location"] = _set_sid_in_query(sanitized, sid)
         else:
             response.headers["Location"] = sanitized

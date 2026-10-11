@@ -7,9 +7,11 @@ Coverage:
      and do not receive the current _sid.
   3. Same-origin redirects preserve query strings, fragments and parameters whose
      values accidentally contain the literal "_sid=".
-  4. Protocol-relative, userinfo, control-character, backslash and malformed
-     URLs are rejected for ticket propagation.
+  4. Malformed / unsafe URLs (userinfo, control characters, backslash, unknown
+     scheme, invalid port) are rejected: the redirect is cancelled (400) and the
+     Location header is removed.
   5. Host / X-Forwarded-Host manipulation does not change the resolved origin.
+  6. Without a trusted public base all redirects are cancelled (400).
 """
 from __future__ import annotations
 
@@ -77,13 +79,29 @@ def redirect_app(tmp_path, monkeypatch):
     def test_redirect_port_mismatch():
         return redirect("https://app.example.edu.cn:8443/student/home")
 
+    @app.get("/test-redirect-port-zero")
+    def test_redirect_port_zero():
+        return redirect("https://app.example.edu.cn:0/student/home?_sid=stolen")
+
     @app.get("/test-redirect-userinfo")
     def test_redirect_userinfo():
-        return redirect("https://user:pass@app.example.edu.cn/student.home?_sid=stolen")
+        return redirect("https://user:pass@app.example.edu.cn/student/home?_sid=stolen")
 
     @app.get("/test-redirect-backslash")
     def test_redirect_backslash():
         return redirect("https://evil.example.com/\\student/home?_sid=stolen")
+
+    @app.get("/test-redirect-control-char")
+    def test_redirect_control_char():
+        return redirect("https://evil.example.com/student/home?\x00_sid=stolen")
+
+    @app.get("/test-redirect-unknown-scheme")
+    def test_redirect_unknown_scheme():
+        return redirect("javascript:alert(1)?_sid=stolen")
+
+    @app.get("/test-redirect-invalid-port")
+    def test_redirect_invalid_port():
+        return redirect("https://app.example.edu.cn:abc/student/home?_sid=stolen")
 
     return app
 
@@ -226,16 +244,25 @@ def test_propagate_sid_rejects_port_mismatch(redirect_app):
     assert "_sid=" not in location
 
 
+def test_propagate_sid_port_zero_treated_as_non_default(redirect_app):
+    """Port 0 is explicit and must not match the protocol default port."""
+    with redirect_app.test_client() as client:
+        client.get("/health")
+        resp = client.get("/test-redirect-port-zero")
+
+    assert resp.status_code == 302
+    location = resp.headers["Location"]
+    assert location == "https://app.example.edu.cn:0/student/home"
+    assert "_sid=" not in location
+
+
 def test_propagate_sid_rejects_userinfo(redirect_app):
     with redirect_app.test_client() as client:
         client.get("/health")
         resp = client.get("/test-redirect-userinfo")
 
-    assert resp.status_code == 302
-    location = resp.headers["Location"]
-    # Malformed / unsafe URL is left untouched; the app should not generate it.
-    assert "user:pass" in location
-    assert "_sid=stolen" in location
+    assert resp.status_code == 400
+    assert "Location" not in resp.headers
 
 
 def test_propagate_sid_rejects_backslash(redirect_app):
@@ -243,45 +270,70 @@ def test_propagate_sid_rejects_backslash(redirect_app):
         client.get("/health")
         resp = client.get("/test-redirect-backslash")
 
-    assert resp.status_code == 302
-    location = resp.headers["Location"]
-    # Flask normalizes the literal backslash to %5C before the after_request hook sees it.
-    # We treat the URL as unsafe and leave it untouched, so the existing stolen _sid remains
-    # and the location is not rewritten to the app origin or signed with a new ticket.
-    assert "evil.example.com" in location
-    assert "%5C" in location or "\\" in location
-    assert "_sid=stolen" in location
-    assert "app.example.edu.cn" not in location
+    assert resp.status_code == 400
+    assert "Location" not in resp.headers
 
 
-def test_propagate_sid_missing_public_base_fail_closed(tmp_path, monkeypatch):
-    """Without a trusted public base the ticket must not be appended (fail closed)."""
-    monkeypatch.setenv("APP_PUBLIC_BASE_URL", "")
-    monkeypatch.setenv("CODER_PROJECTS_DOMAIN", "")
-    monkeypatch.setenv("APP_ENV", "preview")
-    app = create_app(
-        {
-            "TESTING": True,
-            "SECRET_KEY": "redirect-fail-closed-secret",
-            "DATA_DIR": str(tmp_path / "data"),
-            "DATABASE_URL": f"sqlite:///{tmp_path / 'redirect.db'}",
-        }
-    )
-    # Explicitly clear the cached public base to exercise runtime fail-closed path.
-    app.config["APP_PUBLIC_BASE_URL"] = ""
-
-    @app.get("/test-redirect")
-    def test_redirect():
-        return redirect("/student/home")
-
-    with app.test_client() as client:
+def test_propagate_sid_rejects_control_char(redirect_app):
+    with redirect_app.test_client() as client:
         client.get("/health")
-        resp = client.get("/test-redirect")
+        resp = client.get("/test-redirect-control-char")
+
+    assert resp.status_code == 400
+    assert "Location" not in resp.headers
+
+
+def test_propagate_sid_rejects_unknown_scheme(redirect_app):
+    with redirect_app.test_client() as client:
+        client.get("/health")
+        resp = client.get("/test-redirect-unknown-scheme")
+
+    assert resp.status_code == 400
+    assert "Location" not in resp.headers
+
+
+def test_propagate_sid_rejects_invalid_port(redirect_app):
+    with redirect_app.test_client() as client:
+        client.get("/health")
+        resp = client.get("/test-redirect-invalid-port")
+
+    assert resp.status_code == 400
+    assert "Location" not in resp.headers
+
+
+def test_propagate_sid_missing_public_base_fail_closed(redirect_app):
+    """Without a trusted public base all redirects are cancelled."""
+    redirect_app.config["APP_PUBLIC_BASE_URL"] = ""
+    with redirect_app.test_client() as client:
+        client.get("/health")
+        resp = client.get("/test-redirect-root")
+
+    assert resp.status_code == 400
+    assert "Location" not in resp.headers
+    assert "_sid=" not in resp.get_data(as_text=True)
+
+
+def test_propagate_sid_no_session_still_strips_existing_sid(redirect_app):
+    """Even without a current _sid, an existing _sid on an external URL is removed."""
+    with redirect_app.test_client() as client:
+        resp = client.get("/test-redirect-external-with-sid")
 
     assert resp.status_code == 302
     location = resp.headers["Location"]
-    assert location == "/student/home"
+    assert location == "https://evil.example.com/callback?foo=bar"
     assert "_sid=" not in location
+
+
+def test_propagate_sid_no_session_safe_same_origin_no_sid(redirect_app, monkeypatch):
+    """A safe same-origin redirect without a current _sid is allowed without a ticket."""
+    monkeypatch.setattr("platform_app.current_sid", lambda: None)
+    with redirect_app.test_client() as client:
+        resp = client.get("/test-redirect-root")
+
+    assert resp.status_code == 302
+    location = resp.headers["Location"]
+    assert location == "https://app.example.edu.cn/student/home"
+    assert _extract_sid(location) is None
 
 
 def test_propagate_sid_ignores_hostile_x_forwarded_host(redirect_app):
