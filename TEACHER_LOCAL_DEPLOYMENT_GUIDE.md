@@ -149,23 +149,33 @@ Get-Content .\wuda.sql -Raw | docker compose --env-file .env.production exec -T 
 唯一常规配置入口是项目根目录 `.env.production`：
 
 ```dotenv
-AI_BASE_URL=https://模型服务商的OpenAI兼容地址/v1
-AI_API_KEY=模型服务商创建的密钥
-AI_TEXT_MODEL=文本模型ID
-AI_VISION_MODEL=视觉模型ID
+# 平台原生模型（优先）
+CODER_CODING_MODEL_BASE_URL=https://平台模型网关地址/v1
+CODER_CODING_MODEL_API_KEY=平台模型密钥
+CODER_CODING_MODEL=doubao-seed-1-8-251228
+
+# 旧外部 OpenAI 兼容模型（仅当原生模型未配置时回退）
+# AI_BASE_URL=https://模型服务商的OpenAI兼容地址/v1
+# AI_API_KEY=模型服务商创建的密钥
+# AI_TEXT_MODEL=文本模型ID
+# AI_VISION_MODEL=视觉模型ID
+
 AI_READY_TTL_SECONDS=300
 ```
 
-模型调用代码位于 `ai_service.py`，客户端按请求懒加载。系统不依赖 Coze 或其他平台专有 SDK。
+模型调用代码位于 `ai_service.py`，客户端按请求懒加载。系统不依赖 Coze 或其他平台专有 SDK。原生模型由平台注入 `CODER_CODING_MODEL_*` 变量；若这些变量缺失且未配置旧 `AI_*` 变量，AI 服务将明确提示不可用。
 
 ### 4.2 参数填写说明
 
 | 参数 | 用途 | 调整建议 |
 | --- | --- | --- |
-| `AI_BASE_URL` | OpenAI 兼容 API 根地址 | 通常以 `/v1` 结尾；不要追加 `/chat/completions` |
-| `AI_API_KEY` | 调用凭证 | 只保存在 `.env.production`，不得写入代码和截图 |
-| `AI_TEXT_MODEL` | 学生答疑、学情助手、翻译、题库与实验草稿生成 | 选择支持 Chat Completions、中文和 JSON 输出的模型 |
-| `AI_VISION_MODEL` | 视觉能力就绪检查和需要图像理解的任务 | 若供应商用同一多模态模型，可与文本模型填同一 ID |
+| `CODER_CODING_MODEL_BASE_URL` | 平台原生模型网关地址 | 通常以 `/v1` 结尾；不要追加 `/chat/completions` |
+| `CODER_CODING_MODEL_API_KEY` | 平台模型调用凭证 | 只保存在 `.env.production`，不得写入代码和截图 |
+| `CODER_CODING_MODEL` | 模型标识 | 默认 `doubao-seed-1-8-251228`；平台代理可自动管理 |
+| `AI_BASE_URL` | （旧回退）OpenAI 兼容 API 根地址 | 仅当 `CODER_CODING_MODEL_*` 缺失时生效 |
+| `AI_API_KEY` | （旧回退）调用凭证 | 仅当 `CODER_CODING_MODEL_*` 缺失时生效 |
+| `AI_TEXT_MODEL` | （旧回退）文本模型 ID | 仅当 `CODER_CODING_MODEL_*` 缺失时生效 |
+| `AI_VISION_MODEL` | （旧回退）视觉模型 ID | 仅当 `CODER_CODING_MODEL_*` 缺失时生效 |
 | `AI_READY_TTL_SECONDS` | `/ready` 模型探测缓存秒数 | 默认 300；排查配置时可临时调低到 30 |
 
 替换流程：

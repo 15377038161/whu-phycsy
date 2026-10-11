@@ -6,13 +6,13 @@
 
 ## 本地试用
 
-1. 当前 `.env.local` 已由 Codex 写入临时 AI Key，并被 Git 忽略。不要复制、上传或打印该文件。
+1. 当前 `.env.local` 已由 Codex 写入临时 AI Key，并被 Git 忽略。不要复制、上传或打印该文件。优先使用平台原生模型变量 `CODER_CODING_MODEL_BASE_URL` / `CODER_CODING_MODEL_API_KEY` / `CODER_CODING_MODEL`；缺失时回退到旧 `AI_*` 变量，若全部缺失则 AI 服务明确提示不可用。
 2. 运行 `docker compose -f docker-compose.local.yml up --build`，访问 `http://127.0.0.1:5000`。
 3. 演示账号：教师 `admin/admin123`，学生 `S001/123456`。首次登录后应修改为学校账号体系要求的密码。
 
 ## 学校服务器
 
-1. 解压交付包，把 `.env.example` 复制为 `.env.production`，填写强随机密钥、数据库密码、学校自己的 AI Key 与模型。
+1. 解压交付包，把 `.env.example` 复制为 `.env.production`，填写强随机密钥、数据库密码、平台原生模型变量（`CODER_CODING_MODEL_BASE_URL` / `CODER_CODING_MODEL_API_KEY` / `CODER_CODING_MODEL`）或学校自己的旧 `AI_*` Key 与模型。
 2. lucide 图标与 KaTeX 已随应用本地交付，不依赖公网。把 Pyodide v0.27.7 镜像到校内 HTTPS 静态服务并填写以 `/` 结尾的 `PYODIDE_BASE_URL`；应用会把该地址的源自动加入 CSP 的脚本、连接和 Worker 白名单。
 3. 运行 `docker compose --env-file .env.production up -d --build`。应用只绑定 `127.0.0.1:5000`，用 Nginx/Caddy 配置 HTTPS 反向代理。
 4. 验收 `GET /health` 为 200，`GET /ready` 为 200，并完成一次受限原理/步骤 AI 首段流式到达、AI 越权问题拒绝、学生所有页面仅显示预习题成绩、预习题逐题解析与无原题重做、浏览器拟合、报告自动保存、PDF 精确预览、正式提交、教师人工评分、班级成绩 Excel、复制为下一修订以及 Word/PDF 导出。
