@@ -587,17 +587,31 @@ def chaoxing_callback():
     # 学生重复创建 cx_ 账号导致名单与超星账号割裂。
     student_no = _extract_student_no(metadata, verified_user)
 
-    # 映射本地用户：按超星 cxid 作为用户名查找，不存在则按识别到的角色创建账号
+    # 映射本地用户：先只读解析，避免无权限身份在事务中意外提交。
+    # 学生课程成员关系必须由教师通过学生管理/名单导入显式授权；
+    # 超星 SSO 不再自动加入任何默认课程，避免未授权访问或跨课程误绑定。
     username = f"cx_{cxid}"
+    db = db_session()
+    user = db.scalar(select(User).where(User.username == username))
+    if user is None and detected_role == "student":
+        user = _match_roster_student(db, student_no, realname)
+
+    # 账号停用或学生无 enrollment 时，先清除可能存在的旧登录会话与令牌，再拒绝。
+    if user is not None and not user.active:
+        session.clear()
+        flash("账号已被停用，请联系管理员。", "error")
+        return _public_redirect("auth.login")
+
+    if detected_role == "student" and (
+        user is None or db.scalar(select(Enrollment).where(Enrollment.student_id == user.id)) is None
+    ):
+        session.clear()
+        flash("你尚未被加入任何课程，请联系任课教师导入名单后再登录。", "error")
+        # 返回登录页时保持匿名会话以承载 flash 提示；不建立已登录会话。
+        return _public_redirect("auth.login")
+
+    # 通过授权检查后，统一在事务中写入用户映射、更新与审计。
     with transaction() as db:
-        user = db.scalar(select(User).where(User.username == username))
-        if user is None and detected_role == "student":
-            matched = _match_roster_student(db, student_no, realname)
-            if matched is not None:
-                user = matched
-                # 建立超星绑定关系，后续可直接凭 cxid 定位该名单账号
-                if user.chaoxing_cxid != cxid:
-                    user.chaoxing_cxid = cxid
         if user is None:
             user = User(
                 id=f"cx_{cxid}"[:64],
@@ -610,25 +624,14 @@ def chaoxing_callback():
                 chaoxing_cxid=cxid,
             )
             db.add(user)
-        elif not user.active:
-            flash("账号已被停用，请联系管理员。", "error")
-            return _public_redirect("auth.login")
         else:
             if realname and user.name != realname:
                 user.name = realname
-            if not user.chaoxing_cxid:
+            if user.chaoxing_cxid != cxid:
                 user.chaoxing_cxid = cxid
             # 存量账号若此前被识别为学生、而超星元数据已确认为教师，自动升级角色
             if user.role == "student" and detected_role == "teacher":
                 user.role = "teacher"
-        # 学生课程成员关系必须由教师通过学生管理/名单导入显式授权。
-        # 超星 SSO 不再自动加入任何默认课程，避免未授权访问或跨课程误绑定。
-        if user.role == "student" and not db.scalar(
-            select(Enrollment).where(Enrollment.student_id == user.id)
-        ):
-            flash("你尚未被加入任何课程，请联系任课教师导入名单后再登录。", "error")
-            # 保留匿名会话以承载 flash 提示；不建立已登录会话，避免无课程用户进入业务页。
-            return _public_redirect("auth.login")
         db.add(AuditEvent(
             actor_id=user.id,
             action="login.chaoxing",

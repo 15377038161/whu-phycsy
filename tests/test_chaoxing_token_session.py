@@ -408,16 +408,142 @@ def test_sso_student_without_enrollment_is_rejected(app_for_token, supabase_env,
     assert "/student/home" not in location
 
     with app_for_token.app_context():
-        # 不应为本次 SSO 用户创建 enrollment
+        # 拒绝时不应创建任何用户或 enrollment
         sso_user = db_session().scalar(select(User).where(User.username == "cx_no-enroll"))
-        assert sso_user is not None, "应为本次超星身份新建 cx_ 用户"
+        assert sso_user is None, "无 enrollment 学生被拒绝时不应新建 cx_ 用户"
         assert (
-            db_session().query(Enrollment).where(Enrollment.student_id == sso_user.id).count() == 0
+            db_session().query(Enrollment).where(Enrollment.student_id == "cx_no-enroll").count() == 0
         )
         # 会话中不应有 user_id（保持匿名，仅承载 flash 提示）
         rows = db_session().query(AppSession).all()
         assert not any(r.data.get("user_id") for r in rows)
         assert len(rows) >= 1
+
+
+def test_sso_matched_roster_without_enrollment_does_not_update_cxid(
+    app_for_token, supabase_env, monkeypatch
+):
+    """名单学生无 enrollment 时，SSO 匹配后不得更新其 chaoxing_cxid 或创建 enrollment。"""
+    from platform_app.db import db_session
+    from platform_app.models import Enrollment, User
+
+    exchange_resp = _make_exchange_response("access-matched-no-enroll", "refresh-matched-no-enroll")
+
+    def fake_post(url, *, json, headers, timeout):
+        if "/exchange" in url:
+            return _FakeResponse(200, exchange_resp)
+        return _FakeResponse(500, {})
+
+    def fake_get(url, *, headers, timeout):
+        if "/auth/v1/user" in url:
+            return _FakeResponse(
+                200,
+                _make_verified_user(
+                    cxid="matched-no-enroll",
+                    realname="学生甲",
+                    metadata={"student_no": "matched-no-enroll-student"},
+                ),
+            )
+        return _FakeResponse(500, {})
+
+    monkeypatch.setattr("platform_app.blueprints.auth.httpx.post", fake_post)
+    monkeypatch.setattr("platform_app.blueprints.auth.httpx.get", fake_get)
+
+    with app_for_token.app_context():
+        teacher, course, student = _seed_teacher_course_student(
+            db_session(), student_no="matched-no-enroll-student"
+        )
+        original_cxid = student.chaoxing_cxid
+
+    with app_for_token.test_client() as client:
+        resp = client.get("/auth/chaoxing/callback?code=fake-code", follow_redirects=False)
+
+    assert resp.status_code == 302
+    assert "/login" in resp.headers.get("Location", "")
+
+    with app_for_token.app_context():
+        refreshed = db_session().get(User, student.id)
+        assert refreshed.chaoxing_cxid == original_cxid
+        assert db_session().query(Enrollment).where(Enrollment.student_id == student.id).count() == 0
+
+
+def test_sso_reject_clears_existing_session(app_for_token, supabase_env, monkeypatch):
+    """已登录session携带user_id与令牌时，另一个无成员SSO回调应清除旧身份并拒绝业务页。"""
+    from platform_app.db import db_session
+    from platform_app.models import Enrollment, User
+
+    exchange_resp = _make_exchange_response("access-token", "refresh-token")
+    identity = {
+        "cxid": "teacher-token",
+        "realname": "测试教师",
+        "metadata": {"role": "teacher"},
+    }
+
+    def fake_post(url, *, json, headers, timeout):
+        if "/exchange" in url:
+            return _FakeResponse(200, exchange_resp)
+        return _FakeResponse(500, {})
+
+    def fake_get(url, *, headers, timeout):
+        if "/auth/v1/user" in url:
+            return _FakeResponse(200, _make_verified_user(**identity))
+        return _FakeResponse(500, {})
+
+    monkeypatch.setattr("platform_app.blueprints.auth.httpx.post", fake_post)
+    monkeypatch.setattr("platform_app.blueprints.auth.httpx.get", fake_get)
+
+    # 先准备一名无 enrollment 学生和一名教师（教师用于建立旧会话）
+    with app_for_token.app_context():
+        teacher, course, student = _seed_teacher_course_student(
+            db_session(), student_no="session-clear-student"
+        )
+        db_session().add(Enrollment(course_id=course.id, student_id=teacher.id))
+        db_session().commit()
+
+    def _sid_from(location: str) -> str:
+        return location.split("_sid=")[-1].split("&")[0] if "_sid=" in location else ""
+
+    with app_for_token.test_client() as client:
+        # 第一步：以教师身份登录，建立带 user_id 和令牌的旧会话
+        identity.update(
+            {"cxid": "teacher-token", "realname": "测试教师", "metadata": {"role": "teacher"}}
+        )
+        resp1 = client.get("/auth/chaoxing/callback?code=teacher", follow_redirects=False)
+        assert resp1.status_code == 302
+        old_location = resp1.headers.get("Location", "")
+        assert "/teacher" in old_location
+        old_sid = _sid_from(old_location)
+        assert old_sid
+
+        with app_for_token.app_context():
+            old_row = db_session().get(AppSession, old_sid)
+            assert old_row is not None
+            assert old_row.data.get("user_id") is not None
+            assert old_row.data.get("cx_access_token") is not None
+
+        # 第二步：同一浏览器发起另一个无 enrollment 学生的 SSO 回调
+        identity.update(
+            {"cxid": "session-clear-student", "realname": "学生甲", "metadata": {}}
+        )
+        resp2 = client.get("/auth/chaoxing/callback?code=student", follow_redirects=False)
+        assert resp2.status_code == 302
+        new_location = resp2.headers.get("Location", "")
+        assert "/login" in new_location
+        # 同一 _sid 票据会被复用，但服务端数据已被清空
+        new_sid = _sid_from(new_location)
+        assert new_sid == old_sid
+
+        # 第三步：业务页应拒绝访问
+        resp3 = client.get("/student/home", follow_redirects=False)
+        assert resp3.status_code == 302
+        assert "/login" in resp3.headers.get("Location", "")
+
+        with app_for_token.app_context():
+            row = db_session().get(AppSession, old_sid)
+            assert row is not None
+            assert row.data.get("user_id") is None
+            assert row.data.get("cx_access_token") is None
+            assert row.data.get("cx_refresh_token") is None
 
 
 def test_sso_student_with_existing_enrollment_keeps_it(app_for_token, supabase_env, monkeypatch):
