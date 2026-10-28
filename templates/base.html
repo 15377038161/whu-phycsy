@@ -37,6 +37,7 @@
     </nav>
     <div class="user-actions">
       <span class="role-chip">{{ '教师' if user.role == 'teacher' else '学生' }}</span>
+      {% if user.avatar_url %}<img class="user-avatar" src="{{ user.avatar_url }}" alt="{{ user.name }}" referrerpolicy="no-referrer" onerror="this.style.display='none'">{% endif %}
       <span>{{ user.name }}</span>
       <form method="post" action="{{ url_for('api.diag_auth') }}" class="diag-form" title="诊断认证连接" aria-label="诊断认证连接"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="icon-button" type="submit"><i data-lucide="shield-check"></i></button></form>
       <form method="post" action="{{ url_for('api.diag_data') }}" class="diag-form" title="诊断数据连接" aria-label="诊断数据连接"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="icon-button" type="submit"><i data-lucide="database"></i></button></form>

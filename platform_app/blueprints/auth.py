@@ -477,7 +477,27 @@ def chaoxing_callback():
     # 后续若平台提供 app_metadata 等不可用户编辑的官方契约字段，可在此白名单扩展。
     identity_key = str(verified_user.get("id") or verified_user.get("sub") or "").strip()
     metadata = verified_user.get("user_metadata") or {}
+    app_metadata = verified_user.get("app_metadata") or {}
     realname = str(metadata.get("realname") or metadata.get("name") or "").strip()
+
+    # 提取展示资料字段（头像/手机号/学号）：优先 app_metadata（不可用户编辑），
+    # 回退到 user_metadata。头像若接口未返回则按 cxid 派生。
+    def _meta_str(*keys: str) -> str:
+        for source in (app_metadata, metadata):
+            for key in keys:
+                value = source.get(key)
+                if isinstance(value, str) and value.strip():
+                    return value.strip()
+                if isinstance(value, (int, float)) and value:
+                    return str(value)
+        return ""
+
+    avatar_url = _meta_str("avatar_url", "avatar", "picture", "headPic", "headImg")
+    phone = _meta_str("phone", "mobile", "tel", "phone_number")
+    student_code = _meta_str("studentcode", "student_no", "studentno", "sno", "student_id")
+    # 头像兜底：按超星 uid 派生（identity_key 即 Supabase user id，对应超星 cxid）
+    if not avatar_url and identity_key:
+        avatar_url = f"https://photo.chaoxing.com/p/{identity_key}_80"
     # 空身份键：强制清理所有会话
     if not identity_key:
         current_app.logger.warning("chaoxing exchange: no verified identity in user")
@@ -554,6 +574,13 @@ def chaoxing_callback():
             user.name = realname
         if user.chaoxing_cxid != identity_key:
             user.chaoxing_cxid = identity_key
+        # 更新展示资料字段（仅当接口返回了非空值时才覆盖，避免清空已有数据）
+        if avatar_url and user.avatar_url != avatar_url:
+            user.avatar_url = avatar_url
+        if phone and user.phone != phone:
+            user.phone = phone
+        if student_code and user.student_code != student_code:
+            user.student_code = student_code
         db.add(AuditEvent(
             actor_id=user.id,
             action="login.chaoxing",
