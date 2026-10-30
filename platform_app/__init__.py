@@ -354,7 +354,12 @@ def create_app(test_config: dict | None = None) -> Flask:
         return response
 
     from auth_service import password_hash
+    from .services.accounts import ensure_initial_teachers
     from .services.experiments import seed_defaults
     with app.app_context():
         seed_defaults(password_hash)
+        # 预置初始教师名单仅在真实运行环境执行；测试库由用例自行构造数据，
+        # 且测试环境 APP_ENV=testing，天然被该条件排除，避免污染既有断言。
+        if app.config["APP_ENV"] in {"preview", "production"} and not app.config.get("TESTING"):
+            ensure_initial_teachers()
     return app

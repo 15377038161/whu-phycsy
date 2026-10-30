@@ -53,6 +53,14 @@
   中的 `_detect_chaoxing_role()` 固定返回 `student`。已有本地 active teacher 通过 SSO 登录时保留
   原角色并进入教师首页；未授权用户即使元数据含 `teacher`/`admin`/单位号 `1385` 等字段，也按学生
   处理且必须存在 enrollment，否则拒绝登录，不得创建 teacher 账号。
+- 教师授权的两条合法路径（均写审计事件 `member.promote_teacher`，幂等）：
+  1. 启动预置：`create_app` 在 `APP_ENV ∈ {preview, production}` 且非测试时调用
+     `services/accounts.ensure_initial_teachers()`，按 `TEACHER_CXIDS` 环境变量（逗号分隔，
+     默认 `238792026,167050732,54837690`）创建 `username=cx_<uid>`、`chaoxing_cxid=<uid>`、
+     `role=teacher`、`active=True` 的占位教师；本人首次 SSO 登录自动补全实名/头像。
+  2. 教师自助：教师端“班级与学生”页“添加教师”弹窗（`POST /teacher/students/promote-teacher`，
+     受 `@role_required('teacher')` + CSRF 保护）调用 `services/accounts.promote_member_to_teacher()`；
+     已存在绑定账号直接提升+激活，不存在则创建占位教师。
 - 服务端诊断端点（仅已登录用户可访问，受全局 CSRF 保护）：
   - `POST /api/diag/auth`：使用当前会话中的用户 JWT 调用 `/auth/v1/user`，返回环境状态、认证状态、
     脱敏后的 `auth.uid()` 与本地用户映射关系，不返回 token 或完整 JWT。

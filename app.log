@@ -1,0 +1,66 @@
+2026-10-30 04:00:05,707 [INFO] health.monitor: startup self-check passed (deps ok, database ok, files ok)
+2026-10-30 04:00:05,708 [INFO] health.monitor: health monitor started (core every 60s, ai every 300s)
+2026-10-30 04:00:05,862 [DEBUG] httpcore.connection: connect_tcp.started host='robot.chaoxing.com' port=443 local_address=None timeout=15 socket_options=None
+2026-10-30 04:00:05,894 [DEBUG] httpcore.connection: connect_tcp.complete return_value=<httpcore._backends.sync.SyncStream object at 0x7fcbd30f98d0>
+2026-10-30 04:00:05,894 [DEBUG] httpcore.connection: start_tls.started ssl_context=<ssl.SSLContext object at 0x7fcbd31c6c30> server_hostname='robot.chaoxing.com' timeout=15
+2026-10-30 04:00:05,910 [DEBUG] httpcore.connection: start_tls.complete return_value=<httpcore._backends.sync.SyncStream object at 0x7fcbd2e5dc50>
+2026-10-30 04:00:05,911 [DEBUG] httpcore.http11: send_request_headers.started request=<Request [b'POST']>
+2026-10-30 04:00:05,913 [DEBUG] httpcore.http11: send_request_headers.complete
+2026-10-30 04:00:05,914 [DEBUG] httpcore.http11: send_request_body.started request=<Request [b'POST']>
+2026-10-30 04:00:05,915 [DEBUG] httpcore.http11: send_request_body.complete
+2026-10-30 04:00:05,915 [DEBUG] httpcore.http11: receive_response_headers.started request=<Request [b'POST']>
+2026-10-30 04:00:05,928 [DEBUG] httpcore.http11: receive_response_headers.complete return_value=(b'HTTP/1.1', 429, b'', [(b'Date', b'Fri, 30 Oct 2026 04:00:05 GMT'), (b'Content-Type', b'application/json'), (b'Transfer-Encoding', b'chunked'), (b'Connection', b'keep-alive'), (b'Vary', b'Origin'), (b'Vary', b'Access-Control-Request-Method'), (b'Vary', b'Access-Control-Request-Headers'), (b'X-Trace-Id', b'f61693a509a049b7952e2be155d42a78'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains')])
+2026-10-30 04:00:05,929 [INFO] httpx: HTTP Request: POST https://robot.chaoxing.com/v1/sdk/llm/v1/chat/completions "HTTP/1.1 429 "
+2026-10-30 04:00:05,932 [DEBUG] httpcore.http11: receive_response_body.started request=<Request [b'POST']>
+2026-10-30 04:00:05,938 [DEBUG] httpcore.http11: receive_response_body.complete
+2026-10-30 04:00:05,944 [DEBUG] httpcore.http11: response_closed.started
+2026-10-30 04:00:05,949 [DEBUG] httpcore.http11: response_closed.complete
+2026-10-30 04:00:05,960 [DEBUG] httpcore.connection: close.started
+2026-10-30 04:00:05,961 [DEBUG] httpcore.connection: close.complete
+2026-10-30 04:00:05,962 [WARNING] health.monitor: health monitor: optional AI service is not ready
+ * Serving Flask app 'platform_app'
+ * Debug mode: on
+2026-10-30 04:00:05,981 [INFO] werkzeug: [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5173
+ * Running on http://172.22.72.15:5173
+2026-10-30 04:00:05,981 [INFO] werkzeug: [33mPress CTRL+C to quit[0m
+2026-10-30 04:00:05,982 [INFO] werkzeug:  * Restarting with stat
+2026-10-30 04:00:06,612 [INFO] health.monitor: startup self-check passed (deps ok, database ok, files ok)
+2026-10-30 04:00:06,614 [INFO] health.monitor: health monitor started (core every 60s, ai every 300s)
+2026-10-30 04:00:06,782 [DEBUG] httpcore.connection: connect_tcp.started host='robot.chaoxing.com' port=443 local_address=None timeout=15 socket_options=None
+2026-10-30 04:00:06,832 [DEBUG] httpcore.connection: connect_tcp.complete return_value=<httpcore._backends.sync.SyncStream object at 0x7f2984118bd0>
+2026-10-30 04:00:06,833 [DEBUG] httpcore.connection: start_tls.started ssl_context=<ssl.SSLContext object at 0x7f29843d1250> server_hostname='robot.chaoxing.com' timeout=15
+2026-10-30 04:00:06,850 [DEBUG] httpcore.connection: start_tls.complete return_value=<httpcore._backends.sync.SyncStream object at 0x7f297ff58310>
+2026-10-30 04:00:06,850 [DEBUG] httpcore.http11: send_request_headers.started request=<Request [b'POST']>
+2026-10-30 04:00:06,852 [DEBUG] httpcore.http11: send_request_headers.complete
+2026-10-30 04:00:06,853 [DEBUG] httpcore.http11: send_request_body.started request=<Request [b'POST']>
+2026-10-30 04:00:06,853 [DEBUG] httpcore.http11: send_request_body.complete
+2026-10-30 04:00:06,853 [DEBUG] httpcore.http11: receive_response_headers.started request=<Request [b'POST']>
+2026-10-30 04:00:06,895 [DEBUG] httpcore.http11: receive_response_headers.complete return_value=(b'HTTP/1.1', 429, b'', [(b'Date', b'Fri, 30 Oct 2026 04:00:06 GMT'), (b'Content-Type', b'application/json'), (b'Transfer-Encoding', b'chunked'), (b'Connection', b'keep-alive'), (b'Vary', b'Origin'), (b'Vary', b'Access-Control-Request-Method'), (b'Vary', b'Access-Control-Request-Headers'), (b'X-Trace-Id', b'5eee2a62667f4fc3afc5aea49f8bcd01'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains')])
+2026-10-30 04:00:06,899 [INFO] httpx: HTTP Request: POST https://robot.chaoxing.com/v1/sdk/llm/v1/chat/completions "HTTP/1.1 429 "
+2026-10-30 04:00:06,899 [DEBUG] httpcore.http11: receive_response_body.started request=<Request [b'POST']>
+2026-10-30 04:00:06,902 [DEBUG] httpcore.http11: receive_response_body.complete
+2026-10-30 04:00:06,903 [DEBUG] httpcore.http11: response_closed.started
+2026-10-30 04:00:06,904 [DEBUG] httpcore.http11: response_closed.complete
+2026-10-30 04:00:06,907 [DEBUG] httpcore.connection: close.started
+2026-10-30 04:00:06,909 [DEBUG] httpcore.connection: close.complete
+2026-10-30 04:00:06,910 [WARNING] health.monitor: health monitor: optional AI service is not ready
+2026-10-30 04:00:06,920 [WARNING] werkzeug:  * Debugger is active!
+2026-10-30 04:00:06,920 [INFO] werkzeug:  * Debugger PIN: 631-763-197
+2026-10-30 04:00:25,126 [INFO] http.access: request_id=55219cc5-cc78-4936-8863-42376e2ff02d method=GET path=/login status=200 duration_ms=33.3
+2026-10-30 04:00:25,132 [INFO] werkzeug: 127.0.0.1 - - [30/Oct/2026 04:00:25] "GET /login HTTP/1.1" 200 -
+2026-10-30 04:00:25,294 [INFO] http.access: request_id=86bfcb29-8970-4741-9d7c-47748f505f22 method=POST path=/login status=302 duration_ms=131.5
+2026-10-30 04:00:25,298 [INFO] werkzeug: 127.0.0.1 - - [30/Oct/2026 04:00:25] "[32mPOST /login HTTP/1.1[0m" 302 -
+2026-10-30 04:00:25,368 [INFO] http.access: request_id=66aa356d-c84b-4cd5-b5c5-cccb90dd976f method=GET path=/teacher/students status=200 duration_ms=48.4
+2026-10-30 04:00:25,371 [INFO] werkzeug: 127.0.0.1 - - [30/Oct/2026 04:00:25] "GET /teacher/students HTTP/1.1" 200 -
+2026-10-30 04:00:25,409 [INFO] http.access: request_id=4d0258ee-8dff-46f5-b3f6-88f0e579c57f method=GET path=/teacher/students status=200 duration_ms=12.0
+2026-10-30 04:00:25,412 [INFO] werkzeug: 127.0.0.1 - - [30/Oct/2026 04:00:25] "GET /teacher/students HTTP/1.1" 200 -
+2026-10-30 04:00:25,576 [INFO] http.access: request_id=2c5f2987-cd3c-4334-8b18-1696b7434c49 method=POST path=/teacher/students/promote-teacher status=302 duration_ms=135.5
+2026-10-30 04:00:25,582 [INFO] werkzeug: 127.0.0.1 - - [30/Oct/2026 04:00:25] "[32mPOST /teacher/students/promote-teacher HTTP/1.1[0m" 302 -
+2026-10-30 04:00:40,784 [INFO] http.access: request_id=1cc7c864-2cfd-47b1-b9c1-b9b0577d5520 method=GET path=/teacher/students status=200 duration_ms=16.8
+2026-10-30 04:00:40,787 [INFO] werkzeug: 127.0.0.1 - - [30/Oct/2026 04:00:40] "GET /teacher/students HTTP/1.1" 200 -
+2026-10-30 04:02:09,444 [INFO] http.access: request_id=b85d5a27-0b10-41f8-9c47-79072cf62259 method=GET path=/ status=200 duration_ms=1.2
+2026-10-30 04:02:09,449 [INFO] werkzeug: 127.0.0.1 - - [30/Oct/2026 04:02:09] "GET / HTTP/1.1" 200 -
+2026-10-30 04:02:09,471 [INFO] http.access: request_id=f68e1d09-a2e2-43a2-80b7-292e01fb41fa method=GET path=/ status=200 duration_ms=1.7
+2026-10-30 04:02:09,477 [INFO] werkzeug: 127.0.0.1 - - [30/Oct/2026 04:02:09] "GET / HTTP/1.1" 200 -

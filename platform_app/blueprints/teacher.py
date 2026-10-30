@@ -13,7 +13,7 @@ from ..content import EXPERIMENTS, definition
 from ..db import db_session, transaction
 from ..models import AuditEvent, Course, CourseExperiment, Enrollment, Experiment, ExperimentDraft, ExperimentVersion, FileAsset, QuizAssignment, Review, SubmissionRevision, User
 from auth_service import password_hash
-from ..services.accounts import _validate_new_password, reset_student_password
+from ..services.accounts import _validate_new_password, promote_member_to_teacher, reset_student_password
 from ..services.experiments import copy_experiment, ensure_course_experiments, publish_version, published_experiments
 from ..services.files import IMAGE_UPLOADS, REFERENCE_UPLOADS, TEACHING_MATERIAL_UPLOADS, VIDEO_UPLOADS, save_upload
 from ..services.course_materials import extract_teaching_material
@@ -422,6 +422,21 @@ def reset_password(student_id):
     try:
         reset_student_password(current_user().id, student_id, request.form.get("new_password", ""), request.form.get("confirm_password", ""))
         flash("学生密码已重置，请通过安全渠道告知学生临时密码。", "success")
+    except ValueError as exc:
+        flash(str(exc), "error")
+    return redirect(url_for("teacher.students"))
+
+
+@bp.post("/students/promote-teacher")
+@role_required("teacher")
+def promote_teacher():
+    xcid = request.form.get("xcid", "").strip()
+    try:
+        user = promote_member_to_teacher(current_user().id, xcid)
+        if user.name.startswith("教师") and user.chaoxing_cxid:
+            flash(f"已预授权超星账号 {xcid} 为教师；本人首次超星扫码登录后自动补全资料。", "success")
+        else:
+            flash(f"已将 {user.name}（超星账号 {xcid}）设为教师并激活。", "success")
     except ValueError as exc:
         flash(str(exc), "error")
     return redirect(url_for("teacher.students"))
