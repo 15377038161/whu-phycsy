@@ -105,6 +105,14 @@ python3 -m gunicorn --bind 0.0.0.0:"${DEPLOY_RUN_PORT:-5000}" --workers 2 --time
 
 ## 9. 常见问题（FAQ）
 
+- 平台部署构建失败、错误含 `python3: command not found`：平台按 `.coder` 的 `requires = ["nodejs-24"]`
+  生成 Node 构建/运行镜像（`node:24-bookworm-slim`），镜像内**没有系统 Python**（仓库自带
+  `Dockerfile` 未被平台使用；沙箱/dev 环境自带 Python 所以本地预览正常）。已适配：
+  `scripts/build.sh` 分层解析解释器（系统 python3 → apt-get 安装 → node 下载独立 CPython 到
+  `.python/`），任一层可用即装依赖，全部不可用时跳过可选步骤并让构建成功（应用为纯源码无需编译），
+  依赖安装顺延到容器启动由 `scripts/start.sh` 重试；`start.sh` 运行时按同样顺序解析解释器
+  （系统 python3 → `.python/` → apt-get）并探测依赖、缺装才补。`.python/` 已加入
+  `.gitignore`/`.dockerignore`。
 - `/ready` 返回 `503`：通常是 `ai:false`（未配置 `AI_*`）或无 DB；页面功能不受 `ai` 影响。
 - 生产启动即报 `Production requires PostgreSQL`：`DATABASE_URL` 未指向 PostgreSQL，请配置后重启。
 - `PEP 668 externally-managed-environment`：沙箱需加 `--break-system-packages --user`；生产走 Docker 不受影响。

@@ -28,3 +28,4 @@ tmp/
 实例实验报告/
 node_modules/
 .workbuddy/
+.python/

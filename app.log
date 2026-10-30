@@ -64,3 +64,223 @@
 2026-10-30 04:02:09,449 [INFO] werkzeug: 127.0.0.1 - - [30/Oct/2026 04:02:09] "GET / HTTP/1.1" 200 -
 2026-10-30 04:02:09,471 [INFO] http.access: request_id=f68e1d09-a2e2-43a2-80b7-292e01fb41fa method=GET path=/ status=200 duration_ms=1.7
 2026-10-30 04:02:09,477 [INFO] werkzeug: 127.0.0.1 - - [30/Oct/2026 04:02:09] "GET / HTTP/1.1" 200 -
+2026-10-30 04:05:06,017 [DEBUG] httpcore.connection: connect_tcp.started host='robot.chaoxing.com' port=443 local_address=None timeout=15 socket_options=None
+2026-10-30 04:05:06,043 [DEBUG] httpcore.connection: connect_tcp.complete return_value=<httpcore._backends.sync.SyncStream object at 0x7fcbd29e2150>
+2026-10-30 04:05:06,044 [DEBUG] httpcore.connection: start_tls.started ssl_context=<ssl.SSLContext object at 0x7fcbd2a7bd10> server_hostname='robot.chaoxing.com' timeout=15
+2026-10-30 04:05:06,054 [DEBUG] httpcore.connection: start_tls.complete return_value=<httpcore._backends.sync.SyncStream object at 0x7fcbd29e2110>
+2026-10-30 04:05:06,054 [DEBUG] httpcore.http11: send_request_headers.started request=<Request [b'POST']>
+2026-10-30 04:05:06,055 [DEBUG] httpcore.http11: send_request_headers.complete
+2026-10-30 04:05:06,055 [DEBUG] httpcore.http11: send_request_body.started request=<Request [b'POST']>
+2026-10-30 04:05:06,056 [DEBUG] httpcore.http11: send_request_body.complete
+2026-10-30 04:05:06,056 [DEBUG] httpcore.http11: receive_response_headers.started request=<Request [b'POST']>
+2026-10-30 04:05:06,062 [DEBUG] httpcore.http11: receive_response_headers.complete return_value=(b'HTTP/1.1', 429, b'', [(b'Date', b'Fri, 30 Oct 2026 04:05:06 GMT'), (b'Content-Type', b'application/json'), (b'Transfer-Encoding', b'chunked'), (b'Connection', b'keep-alive'), (b'Vary', b'Origin'), (b'Vary', b'Access-Control-Request-Method'), (b'Vary', b'Access-Control-Request-Headers'), (b'X-Trace-Id', b'0ad8abfef577400aba162d8bae5a694f'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains')])
+2026-10-30 04:05:06,063 [INFO] httpx: HTTP Request: POST https://robot.chaoxing.com/v1/sdk/llm/v1/chat/completions "HTTP/1.1 429 "
+2026-10-30 04:05:06,063 [DEBUG] httpcore.http11: receive_response_body.started request=<Request [b'POST']>
+2026-10-30 04:05:06,063 [DEBUG] httpcore.http11: receive_response_body.complete
+2026-10-30 04:05:06,063 [DEBUG] httpcore.http11: response_closed.started
+2026-10-30 04:05:06,063 [DEBUG] httpcore.http11: response_closed.complete
+2026-10-30 04:05:06,064 [DEBUG] httpcore.connection: close.started
+2026-10-30 04:05:06,064 [DEBUG] httpcore.connection: close.complete
+2026-10-30 04:05:06,064 [WARNING] health.monitor: health monitor: optional AI service is not ready
+2026-10-30 04:05:06,966 [DEBUG] httpcore.connection: connect_tcp.started host='robot.chaoxing.com' port=443 local_address=None timeout=15 socket_options=None
+2026-10-30 04:05:06,981 [DEBUG] httpcore.connection: connect_tcp.complete return_value=<httpcore._backends.sync.SyncStream object at 0x7f297e842ad0>
+2026-10-30 04:05:06,981 [DEBUG] httpcore.connection: start_tls.started ssl_context=<ssl.SSLContext object at 0x7f297f9124e0> server_hostname='robot.chaoxing.com' timeout=15
+2026-10-30 04:05:06,991 [DEBUG] httpcore.connection: start_tls.complete return_value=<httpcore._backends.sync.SyncStream object at 0x7f297faa6a50>
+2026-10-30 04:05:06,991 [DEBUG] httpcore.http11: send_request_headers.started request=<Request [b'POST']>
+2026-10-30 04:05:06,992 [DEBUG] httpcore.http11: send_request_headers.complete
+2026-10-30 04:05:06,992 [DEBUG] httpcore.http11: send_request_body.started request=<Request [b'POST']>
+2026-10-30 04:05:06,993 [DEBUG] httpcore.http11: send_request_body.complete
+2026-10-30 04:05:06,993 [DEBUG] httpcore.http11: receive_response_headers.started request=<Request [b'POST']>
+2026-10-30 04:05:06,998 [DEBUG] httpcore.http11: receive_response_headers.complete return_value=(b'HTTP/1.1', 429, b'', [(b'Date', b'Fri, 30 Oct 2026 04:05:06 GMT'), (b'Content-Type', b'application/json'), (b'Transfer-Encoding', b'chunked'), (b'Connection', b'keep-alive'), (b'Vary', b'Origin'), (b'Vary', b'Access-Control-Request-Method'), (b'Vary', b'Access-Control-Request-Headers'), (b'X-Trace-Id', b'564d057a05cf48a1bd22f00fd923ffd1'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains')])
+2026-10-30 04:05:06,999 [INFO] httpx: HTTP Request: POST https://robot.chaoxing.com/v1/sdk/llm/v1/chat/completions "HTTP/1.1 429 "
+2026-10-30 04:05:06,999 [DEBUG] httpcore.http11: receive_response_body.started request=<Request [b'POST']>
+2026-10-30 04:05:06,999 [DEBUG] httpcore.http11: receive_response_body.complete
+2026-10-30 04:05:06,999 [DEBUG] httpcore.http11: response_closed.started
+2026-10-30 04:05:07,000 [DEBUG] httpcore.http11: response_closed.complete
+2026-10-30 04:05:07,000 [DEBUG] httpcore.connection: close.started
+2026-10-30 04:05:07,000 [DEBUG] httpcore.connection: close.complete
+2026-10-30 04:05:07,000 [WARNING] health.monitor: health monitor: optional AI service is not ready
+2026-10-30 04:10:06,118 [DEBUG] httpcore.connection: connect_tcp.started host='robot.chaoxing.com' port=443 local_address=None timeout=15 socket_options=None
+2026-10-30 04:10:06,142 [DEBUG] httpcore.connection: connect_tcp.complete return_value=<httpcore._backends.sync.SyncStream object at 0x7fcbd29e3cd0>
+2026-10-30 04:10:06,142 [DEBUG] httpcore.connection: start_tls.started ssl_context=<ssl.SSLContext object at 0x7fcbd2a7bec0> server_hostname='robot.chaoxing.com' timeout=15
+2026-10-30 04:10:06,147 [DEBUG] httpcore.connection: start_tls.complete return_value=<httpcore._backends.sync.SyncStream object at 0x7fcbd29e3c90>
+2026-10-30 04:10:06,147 [DEBUG] httpcore.http11: send_request_headers.started request=<Request [b'POST']>
+2026-10-30 04:10:06,147 [DEBUG] httpcore.http11: send_request_headers.complete
+2026-10-30 04:10:06,147 [DEBUG] httpcore.http11: send_request_body.started request=<Request [b'POST']>
+2026-10-30 04:10:06,147 [DEBUG] httpcore.http11: send_request_body.complete
+2026-10-30 04:10:06,147 [DEBUG] httpcore.http11: receive_response_headers.started request=<Request [b'POST']>
+2026-10-30 04:10:06,152 [DEBUG] httpcore.http11: receive_response_headers.complete return_value=(b'HTTP/1.1', 429, b'', [(b'Date', b'Fri, 30 Oct 2026 04:10:06 GMT'), (b'Content-Type', b'application/json'), (b'Transfer-Encoding', b'chunked'), (b'Connection', b'keep-alive'), (b'Vary', b'Origin'), (b'Vary', b'Access-Control-Request-Method'), (b'Vary', b'Access-Control-Request-Headers'), (b'X-Trace-Id', b'76a37b4763ce4cb88bc2a6f99d6c6b8b'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains')])
+2026-10-30 04:10:06,153 [INFO] httpx: HTTP Request: POST https://robot.chaoxing.com/v1/sdk/llm/v1/chat/completions "HTTP/1.1 429 "
+2026-10-30 04:10:06,153 [DEBUG] httpcore.http11: receive_response_body.started request=<Request [b'POST']>
+2026-10-30 04:10:06,155 [DEBUG] httpcore.http11: receive_response_body.complete
+2026-10-30 04:10:06,155 [DEBUG] httpcore.http11: response_closed.started
+2026-10-30 04:10:06,155 [DEBUG] httpcore.http11: response_closed.complete
+2026-10-30 04:10:06,155 [DEBUG] httpcore.connection: close.started
+2026-10-30 04:10:06,155 [DEBUG] httpcore.connection: close.complete
+2026-10-30 04:10:06,155 [WARNING] health.monitor: health monitor: optional AI service is not ready
+2026-10-30 04:10:07,071 [DEBUG] httpcore.connection: connect_tcp.started host='robot.chaoxing.com' port=443 local_address=None timeout=15 socket_options=None
+2026-10-30 04:10:07,083 [DEBUG] httpcore.connection: connect_tcp.complete return_value=<httpcore._backends.sync.SyncStream object at 0x7f297e83f550>
+2026-10-30 04:10:07,083 [DEBUG] httpcore.connection: start_tls.started ssl_context=<ssl.SSLContext object at 0x7f297fac45f0> server_hostname='robot.chaoxing.com' timeout=15
+2026-10-30 04:10:07,088 [DEBUG] httpcore.connection: start_tls.complete return_value=<httpcore._backends.sync.SyncStream object at 0x7f297e83ded0>
+2026-10-30 04:10:07,088 [DEBUG] httpcore.http11: send_request_headers.started request=<Request [b'POST']>
+2026-10-30 04:10:07,088 [DEBUG] httpcore.http11: send_request_headers.complete
+2026-10-30 04:10:07,088 [DEBUG] httpcore.http11: send_request_body.started request=<Request [b'POST']>
+2026-10-30 04:10:07,089 [DEBUG] httpcore.http11: send_request_body.complete
+2026-10-30 04:10:07,089 [DEBUG] httpcore.http11: receive_response_headers.started request=<Request [b'POST']>
+2026-10-30 04:10:07,163 [DEBUG] httpcore.http11: receive_response_headers.complete return_value=(b'HTTP/1.1', 429, b'', [(b'Date', b'Fri, 30 Oct 2026 04:10:07 GMT'), (b'Content-Type', b'application/json'), (b'Transfer-Encoding', b'chunked'), (b'Connection', b'keep-alive'), (b'Vary', b'Origin'), (b'Vary', b'Access-Control-Request-Method'), (b'Vary', b'Access-Control-Request-Headers'), (b'X-Trace-Id', b'ce2cf8714c8740d4a93bacc3bd2fed65'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains')])
+2026-10-30 04:10:07,164 [INFO] httpx: HTTP Request: POST https://robot.chaoxing.com/v1/sdk/llm/v1/chat/completions "HTTP/1.1 429 "
+2026-10-30 04:10:07,164 [DEBUG] httpcore.http11: receive_response_body.started request=<Request [b'POST']>
+2026-10-30 04:10:07,165 [DEBUG] httpcore.http11: receive_response_body.complete
+2026-10-30 04:10:07,165 [DEBUG] httpcore.http11: response_closed.started
+2026-10-30 04:10:07,165 [DEBUG] httpcore.http11: response_closed.complete
+2026-10-30 04:10:07,165 [DEBUG] httpcore.connection: close.started
+2026-10-30 04:10:07,165 [DEBUG] httpcore.connection: close.complete
+2026-10-30 04:10:07,166 [WARNING] health.monitor: health monitor: optional AI service is not ready
+2026-10-30 04:15:06,210 [DEBUG] httpcore.connection: connect_tcp.started host='robot.chaoxing.com' port=443 local_address=None timeout=15 socket_options=None
+2026-10-30 04:15:06,225 [DEBUG] httpcore.connection: connect_tcp.complete return_value=<httpcore._backends.sync.SyncStream object at 0x7fcbd29e1290>
+2026-10-30 04:15:06,225 [DEBUG] httpcore.connection: start_tls.started ssl_context=<ssl.SSLContext object at 0x7fcbd2a7bc80> server_hostname='robot.chaoxing.com' timeout=15
+2026-10-30 04:15:06,233 [DEBUG] httpcore.connection: start_tls.complete return_value=<httpcore._backends.sync.SyncStream object at 0x7fcbd29e13d0>
+2026-10-30 04:15:06,233 [DEBUG] httpcore.http11: send_request_headers.started request=<Request [b'POST']>
+2026-10-30 04:15:06,233 [DEBUG] httpcore.http11: send_request_headers.complete
+2026-10-30 04:15:06,233 [DEBUG] httpcore.http11: send_request_body.started request=<Request [b'POST']>
+2026-10-30 04:15:06,234 [DEBUG] httpcore.http11: send_request_body.complete
+2026-10-30 04:15:06,234 [DEBUG] httpcore.http11: receive_response_headers.started request=<Request [b'POST']>
+2026-10-30 04:15:06,239 [DEBUG] httpcore.http11: receive_response_headers.complete return_value=(b'HTTP/1.1', 429, b'', [(b'Date', b'Fri, 30 Oct 2026 04:15:06 GMT'), (b'Content-Type', b'application/json'), (b'Transfer-Encoding', b'chunked'), (b'Connection', b'keep-alive'), (b'Vary', b'Origin'), (b'Vary', b'Access-Control-Request-Method'), (b'Vary', b'Access-Control-Request-Headers'), (b'X-Trace-Id', b'55ecf5734a874a708ff24d004e4e1ce9'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains')])
+2026-10-30 04:15:06,239 [INFO] httpx: HTTP Request: POST https://robot.chaoxing.com/v1/sdk/llm/v1/chat/completions "HTTP/1.1 429 "
+2026-10-30 04:15:06,239 [DEBUG] httpcore.http11: receive_response_body.started request=<Request [b'POST']>
+2026-10-30 04:15:06,239 [DEBUG] httpcore.http11: receive_response_body.complete
+2026-10-30 04:15:06,240 [DEBUG] httpcore.http11: response_closed.started
+2026-10-30 04:15:06,240 [DEBUG] httpcore.http11: response_closed.complete
+2026-10-30 04:15:06,240 [DEBUG] httpcore.connection: close.started
+2026-10-30 04:15:06,240 [DEBUG] httpcore.connection: close.complete
+2026-10-30 04:15:06,240 [WARNING] health.monitor: health monitor: optional AI service is not ready
+2026-10-30 04:15:07,219 [DEBUG] httpcore.connection: connect_tcp.started host='robot.chaoxing.com' port=443 local_address=None timeout=15 socket_options=None
+2026-10-30 04:15:07,241 [DEBUG] httpcore.connection: connect_tcp.complete return_value=<httpcore._backends.sync.SyncStream object at 0x7f297e83e390>
+2026-10-30 04:15:07,241 [DEBUG] httpcore.connection: start_tls.started ssl_context=<ssl.SSLContext object at 0x7f297f911880> server_hostname='robot.chaoxing.com' timeout=15
+2026-10-30 04:15:07,245 [DEBUG] httpcore.connection: start_tls.complete return_value=<httpcore._backends.sync.SyncStream object at 0x7f297e83e490>
+2026-10-30 04:15:07,245 [DEBUG] httpcore.http11: send_request_headers.started request=<Request [b'POST']>
+2026-10-30 04:15:07,245 [DEBUG] httpcore.http11: send_request_headers.complete
+2026-10-30 04:15:07,245 [DEBUG] httpcore.http11: send_request_body.started request=<Request [b'POST']>
+2026-10-30 04:15:07,246 [DEBUG] httpcore.http11: send_request_body.complete
+2026-10-30 04:15:07,246 [DEBUG] httpcore.http11: receive_response_headers.started request=<Request [b'POST']>
+2026-10-30 04:15:07,250 [DEBUG] httpcore.http11: receive_response_headers.complete return_value=(b'HTTP/1.1', 429, b'', [(b'Date', b'Fri, 30 Oct 2026 04:15:07 GMT'), (b'Content-Type', b'application/json'), (b'Transfer-Encoding', b'chunked'), (b'Connection', b'keep-alive'), (b'Vary', b'Origin'), (b'Vary', b'Access-Control-Request-Method'), (b'Vary', b'Access-Control-Request-Headers'), (b'X-Trace-Id', b'4eaf87bc0ace4b30a0ce8a9f0a9f122b'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains')])
+2026-10-30 04:15:07,250 [INFO] httpx: HTTP Request: POST https://robot.chaoxing.com/v1/sdk/llm/v1/chat/completions "HTTP/1.1 429 "
+2026-10-30 04:15:07,250 [DEBUG] httpcore.http11: receive_response_body.started request=<Request [b'POST']>
+2026-10-30 04:15:07,251 [DEBUG] httpcore.http11: receive_response_body.complete
+2026-10-30 04:15:07,251 [DEBUG] httpcore.http11: response_closed.started
+2026-10-30 04:15:07,251 [DEBUG] httpcore.http11: response_closed.complete
+2026-10-30 04:15:07,251 [DEBUG] httpcore.connection: close.started
+2026-10-30 04:15:07,251 [DEBUG] httpcore.connection: close.complete
+2026-10-30 04:15:07,251 [WARNING] health.monitor: health monitor: optional AI service is not ready
+2026-10-30 04:20:06,292 [DEBUG] httpcore.connection: connect_tcp.started host='robot.chaoxing.com' port=443 local_address=None timeout=15 socket_options=None
+2026-10-30 04:20:06,322 [DEBUG] httpcore.connection: connect_tcp.complete return_value=<httpcore._backends.sync.SyncStream object at 0x7fcbd29f5b10>
+2026-10-30 04:20:06,322 [DEBUG] httpcore.connection: start_tls.started ssl_context=<ssl.SSLContext object at 0x7fcbd2a7bda0> server_hostname='robot.chaoxing.com' timeout=15
+2026-10-30 04:20:06,332 [DEBUG] httpcore.connection: start_tls.complete return_value=<httpcore._backends.sync.SyncStream object at 0x7fcbd29f5ad0>
+2026-10-30 04:20:06,332 [DEBUG] httpcore.http11: send_request_headers.started request=<Request [b'POST']>
+2026-10-30 04:20:06,333 [DEBUG] httpcore.http11: send_request_headers.complete
+2026-10-30 04:20:06,333 [DEBUG] httpcore.http11: send_request_body.started request=<Request [b'POST']>
+2026-10-30 04:20:06,333 [DEBUG] httpcore.http11: send_request_body.complete
+2026-10-30 04:20:06,334 [DEBUG] httpcore.http11: receive_response_headers.started request=<Request [b'POST']>
+2026-10-30 04:20:06,362 [DEBUG] httpcore.http11: receive_response_headers.complete return_value=(b'HTTP/1.1', 429, b'', [(b'Date', b'Fri, 30 Oct 2026 04:20:06 GMT'), (b'Content-Type', b'application/json'), (b'Transfer-Encoding', b'chunked'), (b'Connection', b'keep-alive'), (b'Vary', b'Origin'), (b'Vary', b'Access-Control-Request-Method'), (b'Vary', b'Access-Control-Request-Headers'), (b'X-Trace-Id', b'8cfa2ccf2f6c42649b666653d67eb495'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains')])
+2026-10-30 04:20:06,363 [INFO] httpx: HTTP Request: POST https://robot.chaoxing.com/v1/sdk/llm/v1/chat/completions "HTTP/1.1 429 "
+2026-10-30 04:20:06,363 [DEBUG] httpcore.http11: receive_response_body.started request=<Request [b'POST']>
+2026-10-30 04:20:06,364 [DEBUG] httpcore.http11: receive_response_body.complete
+2026-10-30 04:20:06,364 [DEBUG] httpcore.http11: response_closed.started
+2026-10-30 04:20:06,364 [DEBUG] httpcore.http11: response_closed.complete
+2026-10-30 04:20:06,364 [DEBUG] httpcore.connection: close.started
+2026-10-30 04:20:06,365 [DEBUG] httpcore.connection: close.complete
+2026-10-30 04:20:06,365 [WARNING] health.monitor: health monitor: optional AI service is not ready
+2026-10-30 04:20:07,294 [DEBUG] httpcore.connection: connect_tcp.started host='robot.chaoxing.com' port=443 local_address=None timeout=15 socket_options=None
+2026-10-30 04:20:07,321 [DEBUG] httpcore.connection: connect_tcp.complete return_value=<httpcore._backends.sync.SyncStream object at 0x7f297e83df50>
+2026-10-30 04:20:07,322 [DEBUG] httpcore.connection: start_tls.started ssl_context=<ssl.SSLContext object at 0x7f297f910cb0> server_hostname='robot.chaoxing.com' timeout=15
+2026-10-30 04:20:07,327 [DEBUG] httpcore.connection: start_tls.complete return_value=<httpcore._backends.sync.SyncStream object at 0x7f297e83cdd0>
+2026-10-30 04:20:07,327 [DEBUG] httpcore.http11: send_request_headers.started request=<Request [b'POST']>
+2026-10-30 04:20:07,327 [DEBUG] httpcore.http11: send_request_headers.complete
+2026-10-30 04:20:07,327 [DEBUG] httpcore.http11: send_request_body.started request=<Request [b'POST']>
+2026-10-30 04:20:07,327 [DEBUG] httpcore.http11: send_request_body.complete
+2026-10-30 04:20:07,327 [DEBUG] httpcore.http11: receive_response_headers.started request=<Request [b'POST']>
+2026-10-30 04:20:07,332 [DEBUG] httpcore.http11: receive_response_headers.complete return_value=(b'HTTP/1.1', 429, b'', [(b'Date', b'Fri, 30 Oct 2026 04:20:07 GMT'), (b'Content-Type', b'application/json'), (b'Transfer-Encoding', b'chunked'), (b'Connection', b'keep-alive'), (b'Vary', b'Origin'), (b'Vary', b'Access-Control-Request-Method'), (b'Vary', b'Access-Control-Request-Headers'), (b'X-Trace-Id', b'158b03f8094049efb8b79dc9039c636e'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains')])
+2026-10-30 04:20:07,332 [INFO] httpx: HTTP Request: POST https://robot.chaoxing.com/v1/sdk/llm/v1/chat/completions "HTTP/1.1 429 "
+2026-10-30 04:20:07,332 [DEBUG] httpcore.http11: receive_response_body.started request=<Request [b'POST']>
+2026-10-30 04:20:07,333 [DEBUG] httpcore.http11: receive_response_body.complete
+2026-10-30 04:20:07,333 [DEBUG] httpcore.http11: response_closed.started
+2026-10-30 04:20:07,333 [DEBUG] httpcore.http11: response_closed.complete
+2026-10-30 04:20:07,333 [DEBUG] httpcore.connection: close.started
+2026-10-30 04:20:07,333 [DEBUG] httpcore.connection: close.complete
+2026-10-30 04:20:07,333 [WARNING] health.monitor: health monitor: optional AI service is not ready
+2026-10-30 04:25:06,403 [DEBUG] httpcore.connection: connect_tcp.started host='robot.chaoxing.com' port=443 local_address=None timeout=15 socket_options=None
+2026-10-30 04:25:06,423 [DEBUG] httpcore.connection: connect_tcp.complete return_value=<httpcore._backends.sync.SyncStream object at 0x7fcbd29f7410>
+2026-10-30 04:25:06,424 [DEBUG] httpcore.connection: start_tls.started ssl_context=<ssl.SSLContext object at 0x7fcbd2a7bd10> server_hostname='robot.chaoxing.com' timeout=15
+2026-10-30 04:25:06,430 [DEBUG] httpcore.connection: start_tls.complete return_value=<httpcore._backends.sync.SyncStream object at 0x7fcbd29f73d0>
+2026-10-30 04:25:06,430 [DEBUG] httpcore.http11: send_request_headers.started request=<Request [b'POST']>
+2026-10-30 04:25:06,430 [DEBUG] httpcore.http11: send_request_headers.complete
+2026-10-30 04:25:06,430 [DEBUG] httpcore.http11: send_request_body.started request=<Request [b'POST']>
+2026-10-30 04:25:06,430 [DEBUG] httpcore.http11: send_request_body.complete
+2026-10-30 04:25:06,430 [DEBUG] httpcore.http11: receive_response_headers.started request=<Request [b'POST']>
+2026-10-30 04:25:06,438 [DEBUG] httpcore.http11: receive_response_headers.complete return_value=(b'HTTP/1.1', 429, b'', [(b'Date', b'Fri, 30 Oct 2026 04:25:06 GMT'), (b'Content-Type', b'application/json'), (b'Transfer-Encoding', b'chunked'), (b'Connection', b'keep-alive'), (b'Vary', b'Origin'), (b'Vary', b'Access-Control-Request-Method'), (b'Vary', b'Access-Control-Request-Headers'), (b'X-Trace-Id', b'ae2d6db98d44407cab0de3af3eb3e44b'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains')])
+2026-10-30 04:25:06,439 [INFO] httpx: HTTP Request: POST https://robot.chaoxing.com/v1/sdk/llm/v1/chat/completions "HTTP/1.1 429 "
+2026-10-30 04:25:06,439 [DEBUG] httpcore.http11: receive_response_body.started request=<Request [b'POST']>
+2026-10-30 04:25:06,439 [DEBUG] httpcore.http11: receive_response_body.complete
+2026-10-30 04:25:06,439 [DEBUG] httpcore.http11: response_closed.started
+2026-10-30 04:25:06,439 [DEBUG] httpcore.http11: response_closed.complete
+2026-10-30 04:25:06,439 [DEBUG] httpcore.connection: close.started
+2026-10-30 04:25:06,440 [DEBUG] httpcore.connection: close.complete
+2026-10-30 04:25:06,440 [WARNING] health.monitor: health monitor: optional AI service is not ready
+2026-10-30 04:25:07,382 [DEBUG] httpcore.connection: connect_tcp.started host='robot.chaoxing.com' port=443 local_address=None timeout=15 socket_options=None
+2026-10-30 04:25:07,399 [DEBUG] httpcore.connection: connect_tcp.complete return_value=<httpcore._backends.sync.SyncStream object at 0x7f297e827c50>
+2026-10-30 04:25:07,399 [DEBUG] httpcore.connection: start_tls.started ssl_context=<ssl.SSLContext object at 0x7f297f912720> server_hostname='robot.chaoxing.com' timeout=15
+2026-10-30 04:25:07,402 [DEBUG] httpcore.connection: start_tls.complete return_value=<httpcore._backends.sync.SyncStream object at 0x7f297e825150>
+2026-10-30 04:25:07,403 [DEBUG] httpcore.http11: send_request_headers.started request=<Request [b'POST']>
+2026-10-30 04:25:07,403 [DEBUG] httpcore.http11: send_request_headers.complete
+2026-10-30 04:25:07,403 [DEBUG] httpcore.http11: send_request_body.started request=<Request [b'POST']>
+2026-10-30 04:25:07,403 [DEBUG] httpcore.http11: send_request_body.complete
+2026-10-30 04:25:07,403 [DEBUG] httpcore.http11: receive_response_headers.started request=<Request [b'POST']>
+2026-10-30 04:25:07,407 [DEBUG] httpcore.http11: receive_response_headers.complete return_value=(b'HTTP/1.1', 429, b'', [(b'Date', b'Fri, 30 Oct 2026 04:25:07 GMT'), (b'Content-Type', b'application/json'), (b'Transfer-Encoding', b'chunked'), (b'Connection', b'keep-alive'), (b'Vary', b'Origin'), (b'Vary', b'Access-Control-Request-Method'), (b'Vary', b'Access-Control-Request-Headers'), (b'X-Trace-Id', b'87b20aee013548b6ad801d689a8cee3f'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains')])
+2026-10-30 04:25:07,407 [INFO] httpx: HTTP Request: POST https://robot.chaoxing.com/v1/sdk/llm/v1/chat/completions "HTTP/1.1 429 "
+2026-10-30 04:25:07,407 [DEBUG] httpcore.http11: receive_response_body.started request=<Request [b'POST']>
+2026-10-30 04:25:07,407 [DEBUG] httpcore.http11: receive_response_body.complete
+2026-10-30 04:25:07,407 [DEBUG] httpcore.http11: response_closed.started
+2026-10-30 04:25:07,407 [DEBUG] httpcore.http11: response_closed.complete
+2026-10-30 04:25:07,408 [DEBUG] httpcore.connection: close.started
+2026-10-30 04:25:07,408 [DEBUG] httpcore.connection: close.complete
+2026-10-30 04:25:07,408 [WARNING] health.monitor: health monitor: optional AI service is not ready
+2026-10-30 04:27:20,570 [INFO] http.access: request_id=05e0eb85-33dc-4f15-b269-3224591567be method=GET path=/ status=200 duration_ms=1.6
+2026-10-30 04:27:20,576 [INFO] werkzeug: 172.31.255.2 - - [30/Oct/2026 04:27:20] "GET / HTTP/1.1" 200 -
+2026-10-30 04:27:20,790 [INFO] http.access: request_id=c86eed1a-4982-48b6-9d86-6a4442ea9bbb method=GET path=/ status=200 duration_ms=1.6
+2026-10-30 04:27:20,795 [INFO] werkzeug: 172.31.255.3 - - [30/Oct/2026 04:27:20] "GET / HTTP/1.1" 200 -
+2026-10-30 04:30:06,510 [DEBUG] httpcore.connection: connect_tcp.started host='robot.chaoxing.com' port=443 local_address=None timeout=15 socket_options=None
+2026-10-30 04:30:06,527 [DEBUG] httpcore.connection: connect_tcp.complete return_value=<httpcore._backends.sync.SyncStream object at 0x7fcbd2804b50>
+2026-10-30 04:30:06,527 [DEBUG] httpcore.connection: start_tls.started ssl_context=<ssl.SSLContext object at 0x7fcbd29d4200> server_hostname='robot.chaoxing.com' timeout=15
+2026-10-30 04:30:06,533 [DEBUG] httpcore.connection: start_tls.complete return_value=<httpcore._backends.sync.SyncStream object at 0x7fcbd2804b10>
+2026-10-30 04:30:06,533 [DEBUG] httpcore.http11: send_request_headers.started request=<Request [b'POST']>
+2026-10-30 04:30:06,534 [DEBUG] httpcore.http11: send_request_headers.complete
+2026-10-30 04:30:06,534 [DEBUG] httpcore.http11: send_request_body.started request=<Request [b'POST']>
+2026-10-30 04:30:06,534 [DEBUG] httpcore.http11: send_request_body.complete
+2026-10-30 04:30:06,534 [DEBUG] httpcore.http11: receive_response_headers.started request=<Request [b'POST']>
+2026-10-30 04:30:06,546 [DEBUG] httpcore.http11: receive_response_headers.complete return_value=(b'HTTP/1.1', 429, b'', [(b'Date', b'Fri, 30 Oct 2026 04:30:06 GMT'), (b'Content-Type', b'application/json'), (b'Transfer-Encoding', b'chunked'), (b'Connection', b'keep-alive'), (b'Vary', b'Origin'), (b'Vary', b'Access-Control-Request-Method'), (b'Vary', b'Access-Control-Request-Headers'), (b'X-Trace-Id', b'eb0773f62afa4cc584f636486387d9d2'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains')])
+2026-10-30 04:30:06,546 [INFO] httpx: HTTP Request: POST https://robot.chaoxing.com/v1/sdk/llm/v1/chat/completions "HTTP/1.1 429 "
+2026-10-30 04:30:06,546 [DEBUG] httpcore.http11: receive_response_body.started request=<Request [b'POST']>
+2026-10-30 04:30:06,546 [DEBUG] httpcore.http11: receive_response_body.complete
+2026-10-30 04:30:06,546 [DEBUG] httpcore.http11: response_closed.started
+2026-10-30 04:30:06,546 [DEBUG] httpcore.http11: response_closed.complete
+2026-10-30 04:30:06,547 [DEBUG] httpcore.connection: close.started
+2026-10-30 04:30:06,547 [DEBUG] httpcore.connection: close.complete
+2026-10-30 04:30:06,547 [WARNING] health.monitor: health monitor: optional AI service is not ready
+2026-10-30 04:30:07,453 [DEBUG] httpcore.connection: connect_tcp.started host='robot.chaoxing.com' port=443 local_address=None timeout=15 socket_options=None
+2026-10-30 04:30:07,468 [DEBUG] httpcore.connection: connect_tcp.complete return_value=<httpcore._backends.sync.SyncStream object at 0x7f297e8259d0>
+2026-10-30 04:30:07,468 [DEBUG] httpcore.connection: start_tls.started ssl_context=<ssl.SSLContext object at 0x7f297f9115b0> server_hostname='robot.chaoxing.com' timeout=15
+2026-10-30 04:30:07,476 [DEBUG] httpcore.connection: start_tls.complete return_value=<httpcore._backends.sync.SyncStream object at 0x7f297e824b10>
+2026-10-30 04:30:07,476 [DEBUG] httpcore.http11: send_request_headers.started request=<Request [b'POST']>
+2026-10-30 04:30:07,476 [DEBUG] httpcore.http11: send_request_headers.complete
+2026-10-30 04:30:07,476 [DEBUG] httpcore.http11: send_request_body.started request=<Request [b'POST']>
+2026-10-30 04:30:07,477 [DEBUG] httpcore.http11: send_request_body.complete
+2026-10-30 04:30:07,477 [DEBUG] httpcore.http11: receive_response_headers.started request=<Request [b'POST']>
+2026-10-30 04:30:07,563 [DEBUG] httpcore.http11: receive_response_headers.complete return_value=(b'HTTP/1.1', 429, b'', [(b'Date', b'Fri, 30 Oct 2026 04:30:07 GMT'), (b'Content-Type', b'application/json'), (b'Transfer-Encoding', b'chunked'), (b'Connection', b'keep-alive'), (b'Vary', b'Origin'), (b'Vary', b'Access-Control-Request-Method'), (b'Vary', b'Access-Control-Request-Headers'), (b'X-Trace-Id', b'20f62ae1128a45ca99329fe08fb98bdd'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains')])
+2026-10-30 04:30:07,564 [INFO] httpx: HTTP Request: POST https://robot.chaoxing.com/v1/sdk/llm/v1/chat/completions "HTTP/1.1 429 "
+2026-10-30 04:30:07,564 [DEBUG] httpcore.http11: receive_response_body.started request=<Request [b'POST']>
+2026-10-30 04:30:07,564 [DEBUG] httpcore.http11: receive_response_body.complete
+2026-10-30 04:30:07,564 [DEBUG] httpcore.http11: response_closed.started
+2026-10-30 04:30:07,564 [DEBUG] httpcore.http11: response_closed.complete
+2026-10-30 04:30:07,564 [DEBUG] httpcore.connection: close.started
+2026-10-30 04:30:07,565 [DEBUG] httpcore.connection: close.complete
+2026-10-30 04:30:07,565 [WARNING] health.monitor: health monitor: optional AI service is not ready

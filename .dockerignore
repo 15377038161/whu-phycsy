@@ -14,3 +14,4 @@ PROJECT_PRESENTATION_SCRIPT.md
 source_docs
 *.tar.gz
 *.csv
+.python
