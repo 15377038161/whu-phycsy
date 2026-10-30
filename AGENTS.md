@@ -47,14 +47,17 @@
   当前 SSO 身份不一致，登录会被拒绝，防止重绑到其他身份。教师/管理员导入的名单账号（用户名非
   `cx_` 开头）的姓名不会被 SSO 元数据覆盖，保留本地授权值。
 - 学生课程成员关系（`enrollments`）**必须由教师通过学生管理/名单导入显式授权**；超星 SSO 首次登录
-  不再自动加入任何默认课程，也不会自动创建新用户。若超星身份未与本地账号绑定，登录流程会保留匿名
-  会话并提示“该超星账号尚未绑定实验平台账号”，不建立已登录会话，避免未授权访问或跨课程误绑定。
-  已绑定学生若无 enrollment，则提示“你尚未被加入任何课程”。
+  自动注册为学生账号（`cx_<identity>`，随机密码，仅可经 SSO 登录）并完成绑定（写审计
+  `login.chaoxing_auto_register` + `login.chaoxing`），但**不自动加入任何课程**，学生端空态展示。
+  自动注册仍不依据 `user_metadata` 匹配既有名单账号（防接管不变）：元数据中的姓名/学号仅作展示
+  字段同步到新账号。教师预导入的名单学生（用户名非 `cx_` 开头）若无 enrollment，仍提示
+  “你尚未被加入任何课程”并拒绝登录；自动注册的新学生不受此限制。
 - 教师身份（`users.role='teacher'`）**仅由本地数据库的合法授权记录决定**。超星 SSO 登录时，
   `user_metadata`、单位号、自由关键词均不得用于授予或升级教师角色；`platform_app/blueprints/auth.py`
-  中的 `_detect_chaoxing_role()` 固定返回 `student`。已有本地 active teacher 通过 SSO 登录时保留
-  原角色并进入教师首页；未授权用户即使元数据含 `teacher`/`admin`/单位号 `1385` 等字段，也按学生
-  处理且必须存在 enrollment，否则拒绝登录，不得创建 teacher 账号。
+  中的 `_detect_chaoxing_role()` 固定返回 `student`，首次登录自动注册的新账号也恒为 `student`。
+  已有本地 active teacher 通过 SSO 登录时保留原角色并进入教师首页；未授权用户即使元数据含
+  `teacher`/`admin`/单位号 `1385` 等字段，也仅自动注册为学生账号（绝不创建 teacher），可登录
+  学生端但看不到任何课程，直到教师将其导入名单。
 - 教师授权的两条合法路径（均写审计事件 `member.promote_teacher`，幂等）：
   1. 启动预置：`create_app` 在 `APP_ENV ∈ {preview, production}` 且非测试时调用
      `services/accounts.ensure_initial_teachers()`，按 `TEACHER_CXIDS` 环境变量（逗号分隔，

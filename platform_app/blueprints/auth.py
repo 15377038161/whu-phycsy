@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import os
+import secrets
 import time
+import uuid
 from functools import wraps
 from urllib.parse import urlsplit
 
@@ -10,6 +12,7 @@ from flask import Blueprint, current_app, flash, redirect, render_template, requ
 from sqlalchemy import select
 from werkzeug.security import check_password_hash
 
+from auth_service import password_hash
 from ..db import db_session, transaction
 from ..models import AuditEvent, Course, Enrollment, FileAsset, User
 from ..services.accounts import change_password
@@ -553,23 +556,46 @@ def chaoxing_callback():
         flash("账号已被停用，请联系管理员。", "error")
         return _public_redirect("auth.login")
 
-    # 学生必须已有合法本地账号及 enrollment；无预绑定账号时 fail closed。
+    # 首次超星登录自动注册（产品决策）：无绑定账号时创建 student 账号并完成绑定。
+    # 教师白名单校验保持不变：新账号恒为 student，教师身份只能来自本地授权记录；
+    # 仍禁止按元数据中的姓名/学号匹配既有名单账号（防接管，见 tests 伪造元数据用例）。
+    auto_registered = False
     if user is None:
-        session.clear()
-        flash(
-            "该超星账号尚未绑定实验平台账号，请联系任课教师或管理员导入/绑定后再登录。",
-            "error",
+        if len(identity_key) > 64:
+            session.clear()
+            flash("超星身份标识异常，请联系管理员处理。", "error")
+            return _public_redirect("auth.login")
+        user = User(
+            id=str(uuid.uuid4()),
+            username=f"cx_{identity_key}",
+            name=realname or f"学生{identity_key}",
+            role="student",
+            active=True,
+            password_hash=password_hash(secrets.token_urlsafe(24)),
+            chaoxing_cxid=identity_key,
         )
-        return _public_redirect("auth.login")
+        auto_registered = True
 
-    if final_role == "student" and (
-        db.scalar(select(Enrollment).where(Enrollment.student_id == user.id)) is None
+    # 教师预导入的名单学生必须仍有所在课程；自动注册的新学生尚无课程，允许登录后在学生端空态展示。
+    if (
+        not auto_registered
+        and final_role == "student"
+        and db.scalar(select(Enrollment).where(Enrollment.student_id == user.id)) is None
     ):
         session.clear()
         flash("你尚未被加入任何课程，请联系任课教师导入名单后再登录。", "error")
         return _public_redirect("auth.login")
 
     with transaction() as db:
+        if auto_registered:
+            db.add(user)
+            db.add(AuditEvent(
+                actor_id=None,
+                action="login.chaoxing_auto_register",
+                entity_type="user",
+                entity_id=user.id,
+                detail={"identity": identity_key[:64], "username": user.username, "ip": request.remote_addr or "unknown"},
+            ))
         if realname and user.name != realname:
             user.name = realname
         if user.chaoxing_cxid != identity_key:

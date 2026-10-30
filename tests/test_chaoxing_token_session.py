@@ -409,8 +409,8 @@ def _seed_teacher_course_student(db, course_name="量子力学实验", student_n
     return teacher, course, student
 
 
-def test_sso_student_without_enrollment_is_rejected(app_for_token, supabase_env, monkeypatch):
-    """首次超星 SSO 学生无教师授权 enrollment 时，不得自动加入课程或建立会话。"""
+def test_sso_first_login_auto_registers_without_enrollment(app_for_token, supabase_env, monkeypatch):
+    """首次超星 SSO 无绑定账号时自动注册学生：建号+绑定+会话，但不自动加入任何课程。"""
     from platform_app.db import db_session
     from platform_app.models import Enrollment, User
 
@@ -439,26 +439,27 @@ def test_sso_student_without_enrollment_is_rejected(app_for_token, supabase_env,
     assert resp.status_code == 302
     location = resp.headers.get("Location", "")
     assert location.startswith("https://app.example.edu.cn/")
-    assert "/login" in location
-    assert "/student/home" not in location
+    assert "/student/home" in location
 
     with app_for_token.app_context():
-        # 拒绝时不应创建任何用户或 enrollment
+        # 首次登录自动注册学生账号并完成绑定
         sso_user = db_session().scalar(select(User).where(User.username == "cx_no-enroll"))
-        assert sso_user is None, "无 enrollment 学生被拒绝时不应新建 cx_ 用户"
+        assert sso_user is not None, "首次登录应自动注册 cx_ 学生账号"
+        assert sso_user.role == "student"
+        assert sso_user.chaoxing_cxid == "no-enroll"
+        # 不自动加入任何课程
         assert (
-            db_session().query(Enrollment).where(Enrollment.student_id == "cx_no-enroll").count() == 0
+            db_session().query(Enrollment).where(Enrollment.student_id == sso_user.id).count() == 0
         )
-        # 会话中不应有 user_id（保持匿名，仅承载 flash 提示）
+        # 会话中已有 user_id（保持登录态）
         rows = db_session().query(AppSession).all()
-        assert not any(r.data.get("user_id") for r in rows)
-        assert len(rows) >= 1
+        assert any(r.data.get("user_id") == sso_user.id for r in rows)
 
 
-def test_sso_matched_roster_without_enrollment_does_not_update_cxid(
+def test_sso_unbound_roster_student_auto_registers_separate_account(
     app_for_token, supabase_env, monkeypatch
 ):
-    """名单学生无 enrollment 时，SSO 匹配后不得更新其 chaoxing_cxid 或创建 enrollment。"""
+    """元数据中学号与名单学生相同的未绑定身份：不得污染该名单学生，自动注册独立新账号。"""
     from platform_app.db import db_session
     from platform_app.models import Enrollment, User
 
@@ -494,16 +495,22 @@ def test_sso_matched_roster_without_enrollment_does_not_update_cxid(
         resp = client.get("/auth/chaoxing/callback?code=fake-code", follow_redirects=False)
 
     assert resp.status_code == 302
-    assert "/login" in resp.headers.get("Location", "")
+    assert "/student/home" in resp.headers.get("Location", "")
 
     with app_for_token.app_context():
+        # 名单学生不被元数据匹配污染，仍保持未绑定、未入课
         refreshed = db_session().get(User, student.id)
         assert refreshed.chaoxing_cxid == original_cxid
         assert db_session().query(Enrollment).where(Enrollment.student_id == student.id).count() == 0
+        # 自动注册的独立新账号与名单学生无任何关联
+        auto_user = db_session().scalar(select(User).where(User.username == "cx_matched-no-enroll"))
+        assert auto_user is not None
+        assert auto_user.id != student.id
+        assert auto_user.role == "student"
 
 
-def test_sso_reject_clears_existing_session(app_for_token, supabase_env, monkeypatch):
-    """已登录session携带user_id与令牌时，另一个无成员SSO回调应清除旧身份并拒绝业务页。"""
+def test_sso_callback_replaces_existing_session_identity(app_for_token, supabase_env, monkeypatch):
+    """已登录会话再发起另一个 SSO 回调：旧身份必须被整体替换，不允许身份混合。"""
     from platform_app.db import db_session
     from platform_app.models import Enrollment, User
 
@@ -559,29 +566,34 @@ def test_sso_reject_clears_existing_session(app_for_token, supabase_env, monkeyp
             assert old_row.data.get("user_id") is not None
             assert old_row.data.get("cx_access_token") is not None
 
-        # 第二步：同一浏览器发起另一个无 enrollment 学生的 SSO 回调
+        # 第二步：同一浏览器发起另一个未绑定学生的 SSO 回调
+        # 自动注册策略：该学生将自动建号并完成绑定，旧教师身份被整体替换（不允许身份混合）
+        exchange_resp = _make_exchange_response("access-student", "refresh-student")
         identity.update(
             {"cxid": "session-clear-student", "realname": "学生甲", "metadata": {}}
         )
         resp2 = client.get("/auth/chaoxing/callback?code=student", follow_redirects=False)
         assert resp2.status_code == 302
         new_location = resp2.headers.get("Location", "")
-        assert "/login" in new_location
-        # 同一 _sid 票据会被复用，但服务端数据已被清空
+        assert "/student/home" in new_location
+        # 同一 _sid 票据会被复用，但服务端身份已替换
         new_sid = _sid_from(new_location)
         assert new_sid == old_sid
 
-        # 第三步：业务页应拒绝访问
-        resp3 = client.get("/student/home", follow_redirects=False)
-        assert resp3.status_code == 302
-        assert "/login" in resp3.headers.get("Location", "")
-
         with app_for_token.app_context():
+            new_user = db_session().scalar(
+                select(User).where(User.username == "cx_session-clear-student")
+            )
+            assert new_user is not None
             row = db_session().get(AppSession, old_sid)
             assert row is not None
-            assert row.data.get("user_id") is None
-            assert row.data.get("cx_access_token") is None
-            assert row.data.get("cx_refresh_token") is None
+            assert row.data.get("user_id") == new_user.id
+            assert row.data.get("cx_access_token") == "access-student"
+            assert row.data.get("cx_refresh_token") == "refresh-student"
+
+        # 第三步：新学生身份可正常访问学生端业务页
+        resp3 = client.get("/student/home", follow_redirects=False)
+        assert resp3.status_code == 200
 
 
 def test_sso_student_with_existing_enrollment_keeps_it(app_for_token, supabase_env, monkeypatch):
@@ -712,10 +724,10 @@ def test_sso_student_does_not_auto_join_second_course(app_for_token, supabase_en
         )
 
 
-def test_sso_pseudo_teacher_metadata_without_enrollment_is_rejected(
+def test_sso_pseudo_teacher_metadata_auto_registers_as_student(
     app_for_token, supabase_env, monkeypatch
 ):
-    """user_metadata 含 teacher/admin/单位号 1385 但无 enrollment 时，不得创建 teacher 或登录。"""
+    """user_metadata 含 teacher/admin/单位号 1385 时，自动注册账号仍恒为 student，不得进入教师端。"""
     from platform_app.db import db_session
     from platform_app.models import Enrollment, User
 
@@ -755,13 +767,14 @@ def test_sso_pseudo_teacher_metadata_without_enrollment_is_rejected(
 
     assert resp.status_code == 302
     location = resp.headers.get("Location", "")
-    assert "/login" in location
+    assert "/student/home" in location
     assert "/teacher" not in location
 
     with app_for_token.app_context():
-        # 不得创建任何用户，更不得创建 teacher
+        # 自动注册用户已创建，但角色恒为 student（教师白名单校验保留）
         sso_user = db_session().scalar(select(User).where(User.username == "cx_pseudo-teacher"))
-        assert sso_user is None
+        assert sso_user is not None
+        assert sso_user.role == "student"
         assert (
             db_session()
             .query(User)
@@ -769,7 +782,7 @@ def test_sso_pseudo_teacher_metadata_without_enrollment_is_rejected(
             .count()
             == 0
         )
-        # 教师自己的 enrollment 可存在，但不得为伪教师新建任何 enrollment
+        # 不自动加入任何课程（教师自己的 enrollment 不受影响）
         assert db_session().query(Enrollment).count() == enrollment_count_before
 
 
@@ -929,12 +942,18 @@ def test_sso_forged_student_no_cannot_take_over_roster_user(
 
     assert resp.status_code == 302
     location = resp.headers.get("Location", "")
-    assert "/login" in location
-    assert "/student/home" not in location
+    # 自动注册策略：伪造学号的攻击者只能得到一个全新的空学生账号，无法接管受害者名单账号。
+    assert "/student/home" in location
 
     with app_for_token.app_context():
-        # 攻击者账号不应被创建
-        assert db_session().scalar(select(User).where(User.username == "cx_attacker-cxid")) is None
+        # 攻击者被自动注册为新学生账号（伪造学号仅作展示字段，不关联受害者账号）
+        attacker = db_session().scalar(select(User).where(User.username == "cx_attacker-cxid"))
+        assert attacker is not None
+        assert attacker.role == "student"
+        assert attacker.chaoxing_cxid == "attacker-cxid"
+        assert attacker.id != victim.id
+        # 攻击者没有任何选课，无法触及受害者课程数据
+        assert db_session().query(Enrollment).where(Enrollment.student_id == attacker.id).count() == 0
         # 受害者账号绑定关系不应被修改
         victim_refreshed = db_session().get(User, victim.id)
         assert victim_refreshed.chaoxing_cxid is None
@@ -986,10 +1005,14 @@ def test_sso_forged_realname_cannot_take_over_roster_user(
 
     assert resp.status_code == 302
     location = resp.headers.get("Location", "")
-    assert "/login" in location
+    # 自动注册策略：伪造姓名的攻击者仅得到全新账号，姓名匹配不会接管受害者账号。
+    assert "/student/home" in location
 
     with app_for_token.app_context():
-        assert db_session().scalar(select(User).where(User.username == "cx_attacker-cxid-2")) is None
+        attacker = db_session().scalar(select(User).where(User.username == "cx_attacker-cxid-2"))
+        assert attacker is not None
+        assert attacker.role == "student"
+        assert attacker.id != victim.id
         victim_refreshed = db_session().get(User, victim.id)
         assert victim_refreshed.chaoxing_cxid is None
 
@@ -1094,6 +1117,101 @@ def test_sso_identity_conflict_rejects_login(app_for_token, supabase_env, monkey
         # 学生 A 的绑定保持不变
         student_a_refreshed = db_session().get(User, student_a.id)
         assert student_a_refreshed.chaoxing_cxid == "conflict-identity"
+
+
+def test_sso_first_login_auto_registers_student_without_enrollment(app_for_token, supabase_env, monkeypatch):
+    """首次超星登录：无绑定账号时自动注册学生账号并完成绑定，未入课也可登录。"""
+    from platform_app.db import db_session
+    from platform_app.models import AuditEvent, Enrollment, User
+
+    exchange_resp = _make_exchange_response("access-auto", "refresh-auto")
+
+    def fake_post(url, *, json, headers, timeout):
+        if "/exchange" in url:
+            return _FakeResponse(200, exchange_resp)
+        return _FakeResponse(500, {})
+
+    def fake_get(url, *, headers, timeout):
+        if "/auth/v1/user" in url:
+            return _FakeResponse(
+                200,
+                _make_verified_user(
+                    cxid="auto-student-1",
+                    realname="新同学",
+                    metadata={"student_no": "2024301001", "phone": "13800000000"},
+                ),
+            )
+        return _FakeResponse(500, {})
+
+    monkeypatch.setattr("platform_app.blueprints.auth.httpx.post", fake_post)
+    monkeypatch.setattr("platform_app.blueprints.auth.httpx.get", fake_get)
+
+    with app_for_token.test_client() as client:
+        resp = client.get("/auth/chaoxing/callback?code=fake-code", follow_redirects=False)
+
+    assert resp.status_code == 302
+    location = resp.headers.get("Location", "")
+    assert "/student/home" in location
+
+    with app_for_token.app_context():
+        user = db_session().scalar(select(User).where(User.username == "cx_auto-student-1"))
+        assert user is not None
+        assert user.role == "student"
+        assert user.active is True
+        assert user.chaoxing_cxid == "auto-student-1"
+        assert user.name == "新同学"
+        assert user.student_code == "2024301001"
+        assert user.phone == "13800000000"
+        # 随机密码已设置，账号只能经超星 SSO 登录
+        assert user.password_hash
+        # 新学生未加入任何课程，仍允许登录（学生端空态展示）
+        assert db_session().query(Enrollment).where(Enrollment.student_id == user.id).count() == 0
+        # 自动注册与登录均写审计事件
+        audit_actions = {
+            row.action
+            for row in db_session().scalars(select(AuditEvent).where(AuditEvent.entity_id == user.id)).all()
+        }
+        assert "login.chaoxing_auto_register" in audit_actions
+        assert "login.chaoxing" in audit_actions
+
+
+def test_sso_auto_register_never_grants_teacher(app_for_token, supabase_env, monkeypatch):
+    """教师白名单校验保留：即使元数据声称教师/职员身份，自动注册账号恒为 student。"""
+    from platform_app.db import db_session
+    from platform_app.models import User
+
+    exchange_resp = _make_exchange_response("access-teacherish", "refresh-teacherish")
+
+    def fake_post(url, *, json, headers, timeout):
+        if "/exchange" in url:
+            return _FakeResponse(200, exchange_resp)
+        return _FakeResponse(500, {})
+
+    def fake_get(url, *, headers, timeout):
+        if "/auth/v1/user" in url:
+            return _FakeResponse(
+                200,
+                _make_verified_user(
+                    cxid="teacherish-user",
+                    realname="某教师",
+                    metadata={"role": "teacher", "usertype": "3", "jobtitle": "教授"},
+                ),
+            )
+        return _FakeResponse(500, {})
+
+    monkeypatch.setattr("platform_app.blueprints.auth.httpx.post", fake_post)
+    monkeypatch.setattr("platform_app.blueprints.auth.httpx.get", fake_get)
+
+    with app_for_token.test_client() as client:
+        resp = client.get("/auth/chaoxing/callback?code=fake-code", follow_redirects=False)
+
+    assert resp.status_code == 302
+    assert "/student/home" in resp.headers.get("Location", "")
+
+    with app_for_token.app_context():
+        user = db_session().scalar(select(User).where(User.username == "cx_teacherish-user"))
+        assert user is not None
+        assert user.role == "student"
 
 
 def _sid_from_location(location: str) -> str:
