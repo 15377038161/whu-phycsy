@@ -1162,6 +1162,8 @@ def test_sso_first_login_auto_registers_student_without_enrollment(app_for_token
         assert user.name == "新同学"
         assert user.student_code == "2024301001"
         assert user.phone == "13800000000"
+        # 头像兜底：接口未返回头像时按 cxid 派生
+        assert user.avatar_url == "https://photo.chaoxing.com/p/auto-student-1_80"
         # 随机密码已设置，账号只能经超星 SSO 登录
         assert user.password_hash
         # 新学生未加入任何课程，仍允许登录（学生端空态展示）
@@ -1409,13 +1411,21 @@ def test_sso_empty_identity_clears_existing_session(app_for_token, supabase_env,
             assert row.data.get("cx_refresh_token") is None
 
 
-def test_sso_roster_name_not_overwritten_by_metadata(app_for_token, supabase_env, monkeypatch):
-    """教师导入的名单学生姓名不得被 SSO 可编辑元数据覆盖。"""
+def test_sso_roster_profile_synced_from_sso_metadata(app_for_token, supabase_env, monkeypatch):
+    """SSO 展示资料以超星元数据为准：名单学生的姓名/头像/手机号/学号被非空超星数据覆盖。"""
     from platform_app.db import db_session
     from platform_app.models import Enrollment, User
 
     exchange_resp = _make_exchange_response("access-roster-name", "refresh-roster-name")
-    identity = {"cxid": "roster-id", "realname": "SSO新姓名", "metadata": {}}
+    identity = {
+        "cxid": "roster-id",
+        "realname": "SSO新姓名",
+        "metadata": {
+            "headImg": "https://photo.chaoxing.com/p/roster-id_80",
+            "phone": "13900000000",
+            "student_no": "2024000102",
+        },
+    }
     _make_fakes_for_identity(identity, exchange_resp, monkeypatch)
 
     with app_for_token.app_context():
@@ -1442,5 +1452,10 @@ def test_sso_roster_name_not_overwritten_by_metadata(app_for_token, supabase_env
 
     with app_for_token.app_context():
         refreshed = db_session().get(User, student.id)
-        assert refreshed.name == "教师导入姓名"
+        # 展示资料以超星 SSO 返回为准（非空才覆盖，不因元数据缺失清空已有值）
+        assert refreshed.name == "SSO新姓名"
+        assert refreshed.avatar_url == "https://photo.chaoxing.com/p/roster-id_80"
+        assert refreshed.phone == "13900000000"
+        assert refreshed.student_code == "2024000102"
+        # 身份绑定键不变：姓名/学号/手机号仅作展示字段，不参与身份匹配
         assert refreshed.chaoxing_cxid == "roster-id"

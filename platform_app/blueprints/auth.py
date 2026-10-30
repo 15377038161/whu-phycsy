@@ -481,10 +481,9 @@ def chaoxing_callback():
     identity_key = str(verified_user.get("id") or verified_user.get("sub") or "").strip()
     metadata = verified_user.get("user_metadata") or {}
     app_metadata = verified_user.get("app_metadata") or {}
-    realname = str(metadata.get("realname") or metadata.get("name") or "").strip()
 
-    # 提取展示资料字段（头像/手机号/学号）：优先 app_metadata（不可用户编辑），
-    # 回退到 user_metadata。头像若接口未返回则按 cxid 派生。
+    # 展示资料字段（姓名/头像/手机号/学号）统一以超星 SSO 返回为准；app_metadata
+    # 优先（不可用户编辑），回退 user_metadata。头像若接口未返回则按 cxid 派生。
     def _meta_str(*keys: str) -> str:
         for source in (app_metadata, metadata):
             for key in keys:
@@ -495,9 +494,10 @@ def chaoxing_callback():
                     return str(value)
         return ""
 
+    realname = _meta_str("realname", "name", "nickname")
     avatar_url = _meta_str("avatar_url", "avatar", "picture", "headPic", "headImg")
     phone = _meta_str("phone", "mobile", "tel", "phone_number")
-    student_code = _meta_str("studentcode", "student_no", "studentno", "sno", "student_id")
+    student_code = _meta_str("studentcode", "student_no", "studentno", "sno", "student_id", "studentid", "studentId")
     # 头像兜底：按超星 uid 派生（identity_key 即 Supabase user id，对应超星 cxid）
     if not avatar_url and identity_key:
         avatar_url = f"https://photo.chaoxing.com/p/{identity_key}_80"
@@ -540,9 +540,6 @@ def chaoxing_callback():
             session.clear()
             flash("该账号已绑定其他超星身份，请联系管理员处理。", "error")
             return _public_redirect("auth.login")
-        # 禁止用元数据覆盖教师导入的姓名（非 cx_ 用户名为教师/管理员导入的名单账号）
-        if not user.username.startswith("cx_") and realname and user.name != realname:
-            realname = user.name
 
     # 教师身份仅由本地数据库的合法授权记录决定；超星 SSO 不会创建或升级教师。
     if user is not None and user.role == "teacher" and user.active:
