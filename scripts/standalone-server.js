@@ -27,10 +27,14 @@ if (!fs.existsSync(APP)) {
   process.exit(1);
 }
 
-// Mirror scripts/start.sh: the deploy container has no PostgreSQL, so preview
-// mode (SQLite) is the working default; explicit env always wins.
+// Force preview mode, mirroring scripts/start.sh. The deploy target has no
+// PostgreSQL, and the app aborts startup with RuntimeError when APP_ENV is
+// "production" (create_app gate) — PaaS deploy environments commonly inject
+// APP_ENV=production, which would kill the container at boot ("应用启动失败").
+// The vendored runtime is self-contained SQLite, so preview is the only
+// working mode here regardless of what the platform env advertises.
 const env = Object.assign({}, process.env, {
-  APP_ENV: process.env.APP_ENV || "preview",
+  APP_ENV: "preview",
   PYTHONUNBUFFERED: "1",
 });
 

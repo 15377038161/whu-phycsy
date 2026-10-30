@@ -34,6 +34,7 @@ def _iso_datetime(value):
 
 
 @bp.get("/health")
+@bp.get("/healthz")
 def health():
     payload = {
         "status": "ok",
@@ -49,6 +50,7 @@ def health():
 
 
 @bp.get("/ready")
+@bp.get("/readyz")
 def ready():
     data_dir = Path(current_app.config["DATA_DIR"])
     # AI 是可选的增强能力：预览/本地环境可能未配置 AI 凭证，这不应影响

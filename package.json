@@ -6,6 +6,8 @@
   "scripts": {
     "build": "bash ./scripts/build.sh",
     "start": "bash ./scripts/start.sh",
-    "dev": "bash ./scripts/dev.sh"
+    "dev": "bash ./scripts/dev.sh",
+    "lint": "node --check scripts/standalone-server.js",
+    "ts-check": "node --check scripts/standalone-server.js"
   }
 }

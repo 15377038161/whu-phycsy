@@ -48,8 +48,8 @@ python3 -m gunicorn --bind 0.0.0.0:"${DEPLOY_RUN_PORT:-5000}" --workers 2 --time
 
 ## 3. 健康检查
 
-- `GET /health` → `{"status":"ok"}`（进程存活，200）。
-- `GET /ready` → `{"status":"ready","checks":{database,files,ai}}`；任一不满足返回 `503`。
+- `GET /health` → `{"status":"ok"}`（进程存活，200）。平台探针常用别名 `GET /healthz` 返回相同响应。
+- `GET /ready` → `{"status":"ready","checks":{database,files,ai}}`；任一不满足返回 `503`。平台探针常用别名 `GET /readyz` 返回相同判定。
   - `database`：`SELECT 1` 探活；
   - `files`：`DATA_DIR` 可写；
   - `ai`：AI 端点连通（未配置 `AI_*` 时为 `false`，不影响页面，但 `/ready` 会 `503`）。
@@ -121,6 +121,17 @@ python3 -m gunicorn --bind 0.0.0.0:"${DEPLOY_RUN_PORT:-5000}" --workers 2 --time
   `scripts/build.sh` 分层解析解释器（系统 python3 → apt-get 安装 → node 下载独立 CPython 到
   `.python/`），用于构建期校验；运行时解释器永远以 vendored `.python/` 随 payload 携带。
   `.python/`、`.next/`、`vendor-py/`、`public/` 已加入 `.gitignore`/`.dockerignore`。
+- 平台部署**构建成功但应用启动失败**（部署明细仅提示启动错误）：平台部署环境常向容器注入
+  `APP_ENV=production`（连同 `NODE_ENV=production`、`CODER_PROJECTS_ENV=PROD`），而应用在生产
+  环境下有两道 fail-closed 启动门控：无 PostgreSQL `DATABASE_URL` 时 `create_app` 直接
+  `raise RuntimeError("Production requires PostgreSQL DATABASE_URL")`，且生产环境必须显式
+  配置合法公开域名否则启动即失败（`check_app_public_base_at_startup`）。payload 运行时是自包含
+  SQLite，唯一可用模式为 preview。已适配：`scripts/standalone-server.js`（payload 内为
+  `server.js`）与 `scripts/start.sh` 一致，**无条件强制 `APP_ENV=preview`**，忽略平台注入的
+  production 标记；同时新增 `/healthz`、`/readyz` 探针别名（与 `/health`、`/ready` 同响应），
+  兼容平台 K8s 探针路径。验证方式：`.next/standalone/` 下
+  `env -i PATH=<仅 node 所在目录> APP_ENV=production NODE_ENV=production CODER_PROJECTS_ENV=PROD PORT=<端口> node server.js`
+  应正常拉起并通过 `/health`、`/ready` 自检。
 - `/ready` 返回 `503`：通常是 `ai:false`（未配置 `AI_*`）或无 DB；页面功能不受 `ai` 影响。
 - 生产启动即报 `Production requires PostgreSQL`：`DATABASE_URL` 未指向 PostgreSQL，请配置后重启。
 - `PEP 668 externally-managed-environment`：沙箱需加 `--break-system-packages --user`；生产走 Docker 不受影响。

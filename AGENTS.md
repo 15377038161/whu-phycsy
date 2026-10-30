@@ -23,6 +23,7 @@
 - 公开基址：启动时按 `APP_PUBLIC_BASE_URL` → `CODER_PROJECTS_DOMAIN` → `localhost` 解析并缓存到 `app.config["APP_PUBLIC_BASE_URL"]`；生产环境必须配置合法公开域名，预览/开发遇到沙箱/内部/本地域名会回退到 `http://localhost:5000` 以保证非 OAuth 页面可启动。校验使用 urlsplit（协议/hostname/端口/userinfo/path/query/fragment），并额外拒绝沙箱/内部/本地地址；超星 OAuth 回跳在请求时再次严格解析，非法域名直接报错，不会使用缓存的 localhost 生成 redirect_uri。
 - iframe 嵌入：默认拒绝（`X-Frame-Options: DENY`，`frame-ancestors 'none'`）；只读取显式 `PLATFORM_FRAME_ANCESTORS`（逗号分隔），`CODER_PROJECTS_DOMAIN` 是应用自身域名，不会自动作为父源授权，也不擅自加入 `'self'`。每个父源必须是无 userinfo/path/query/fragment/通配符的 http(s) origin。
 - 平台部署构建/运行镜像是 Node 基底（`node:24-bookworm-slim`，由 `.coder` 的 `requires` 决定），无系统 Python；部署运行时走 nextjs-v3 profile 的 Next.js standalone 契约（`.next/standalone`+`node server.js`，非 root `node` 用户）。`scripts/build.sh` 构建期组装自包含 payload（vendored CPython + vendor-py 依赖 + Flask 源码 + server.js），`scripts/standalone-server.js` 为运行时入口，`scripts/start.sh` 为备选入口，详见 `DEPLOY_ADAPTATION.md` FAQ。
+- payload 运行时（`standalone-server.js`/`start.sh`）**无条件强制 `APP_ENV=preview`**：平台部署环境常注入 `APP_ENV=production`，会触发 `create_app` 的生产门控（无 PostgreSQL 即 `RuntimeError`、生产必须显式合法公开域名）导致容器启动即失败；payload 为自包含 SQLite，preview 是唯一可用模式。健康探针除 `/health`、`/ready` 外提供 K8s 常用别名 `/healthz`、`/readyz`（同响应）。
 - 交付/排障见 `DEPLOY_ADAPTATION.md`。
 
 ## 内置数据库接入契约（Supabase / Data API）
