@@ -110,6 +110,13 @@ python3 -m gunicorn --bind 0.0.0.0:"${DEPLOY_RUN_PORT:-5000}" --workers 2 --time
 - `PEP 668 externally-managed-environment`：沙箱需加 `--break-system-packages --user`；生产走 Docker 不受影响。
 - 依赖更新失败：先看 `LOG_LEVEL` 对应的运行日志；`gunicorn` 日志在 stdout。
 - 端口被占：确认 `DEPLOY_RUN_PORT` 对应进程，`ss -lptn 'sport = :<port>'` 定位后按需重启。
+- 平台部署构建失败、错误含 `"/pnpm-lock.yaml": not found`：平台 K8s 构建（nextjs-v3 profile）
+  会在 Dockerfile 中 `COPY package.json pnpm-lock.yaml ./` 并执行 `pnpm install --frozen-lockfile`。
+  即使项目是纯 Python/Flask，只要根目录存在 `package.json`（stub 兼容文件）且 `.coder` 声明
+  `target = "server"`，平台就会按 Node 构建上下文准备依赖层。此时根目录**必须存在**
+  `pnpm-lock.yaml`（由 `pnpm install --lockfile-only` 生成，无需真实 Node 依赖），否则 COPY
+  阶段即失败。本仓库已内置 `pnpm-lock.yaml`（lockfileVersion 9.0，兼容平台 pnpm 9.x），
+  删除或改动 `package.json` 后需重新生成并一并提交。
 
 ## 10. 内置数据库接入（Supabase / Data API）
 
