@@ -121,6 +121,14 @@ python3 -m gunicorn --bind 0.0.0.0:"${DEPLOY_RUN_PORT:-5000}" --workers 2 --time
   `scripts/build.sh` 分层解析解释器（系统 python3 → apt-get 安装 → node 下载独立 CPython 到
   `.python/`），用于构建期校验；运行时解释器永远以 vendored `.python/` 随 payload 携带。
   `.python/`、`.next/`、`vendor-py/`、`public/` 已加入 `.gitignore`/`.dockerignore`。
+- 平台部署构建失败、错误含 `No module named pip` / `pip install into payload vendor dir failed`：
+  部署环境若无法访问 GitHub（python-build-standalone 下载失败），`build.sh` 退化为从系统
+  `/usr/bin/python3` 复制二进制 + stdlib 组装 relocatable 解释器；但 Debian 系把 pip 放在独立的
+  `python3-pip` 包（`/usr/lib/python3/dist-packages`），不在 stdlib 目录内，组装出的解释器没有
+  pip，直接用它执行 `pip install --target vendor-py` 即失败。已适配：`build.sh` 安装 payload 依赖前
+  先探测解释器是否带 pip，缺失时改用构建期系统 python 的 pip（同版本同平台，`--target` 安装到独立
+  目录，两种解释器来源通用），并以 `ensurepip` 兜底；安装完成后仍用 payload 解释器在与运行时相同的
+  `PYTHONHOME`/`PYTHONPATH`/`LD_LIBRARY_PATH` 环境下做导入探针验证。
 - 平台部署**构建成功但应用启动失败**（部署明细仅提示启动错误）：平台部署环境常向容器注入
   `APP_ENV=production`（连同 `NODE_ENV=production`、`CODER_PROJECTS_ENV=PROD`），而应用在生产
   环境下有两道 fail-closed 启动门控：无 PostgreSQL `DATABASE_URL` 时 `create_app` 直接

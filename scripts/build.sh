@@ -134,13 +134,35 @@ PAYLOAD_PY="$PROJECT_DIR/.python/bin/python3"
 PAYLOAD_HOME="$PROJECT_DIR/.python"
 [ -f "$PAYLOAD_HOME/.needs-pythonhome" ] && export PYTHONHOME="$PAYLOAD_HOME"
 
+# Pick an interpreter that actually has pip to perform the --target install.
+# The downloaded standalone CPython ships pip, but the apt-copy fallback
+# interpreter does NOT: Debian keeps pip in the separate python3-pip package
+# (/usr/lib/python3/dist-packages), which the fallback assembly never copies,
+# so `"$PAYLOAD_PY" -m pip` dies with "No module named pip". The build-time
+# system python is the same CPython version on the same platform, and
+# `--target` installs into a plain directory, so its pip works for either
+# interpreter source.
+VENDOR_PY_BIN="$PAYLOAD_PY"
+if ! "$VENDOR_PY_BIN" -m pip --version >/dev/null 2>&1; then
+  if [ -n "$PYTHON3_BIN" ] && env -u PYTHONHOME "$PYTHON3_BIN" -m pip --version >/dev/null 2>&1; then
+    unset PYTHONHOME
+    VENDOR_PY_BIN="$PYTHON3_BIN"
+    log "payload interpreter has no pip; using build-time interpreter for vendor install"
+  fi
+fi
+if ! "$VENDOR_PY_BIN" -m pip --version >/dev/null 2>&1; then
+  [ -n "$PYTHON3_BIN" ] && env -u PYTHONHOME "$PYTHON3_BIN" -m ensurepip --upgrade >/dev/null 2>&1
+fi
+"$VENDOR_PY_BIN" -m pip --version >/dev/null 2>&1 \
+  || fatal "no interpreter with pip available to install payload dependencies"
+
 # Install runtime dependencies into a vendor dir inside the payload; the
 # runtime entry adds it to PYTHONPATH. Uniform for both interpreter sources.
 log "installing runtime dependencies into payload vendor dir"
 rm -rf "$PROJECT_DIR/vendor-py"
-"$PAYLOAD_PY" -m pip install -q --no-cache-dir --break-system-packages --upgrade \
+"$VENDOR_PY_BIN" -m pip install -q --no-cache-dir --break-system-packages --upgrade \
   --retries 2 --timeout 60 --target "$PROJECT_DIR/vendor-py" -r requirements.txt \
-  || "$PAYLOAD_PY" -m pip install -q --no-cache-dir --upgrade \
+  || "$VENDOR_PY_BIN" -m pip install -q --no-cache-dir --upgrade \
   --retries 2 --timeout 60 --target "$PROJECT_DIR/vendor-py" -r requirements.txt \
   || fatal "pip install into payload vendor dir failed"
 unset PYTHONHOME
