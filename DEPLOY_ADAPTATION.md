@@ -105,14 +105,22 @@ python3 -m gunicorn --bind 0.0.0.0:"${DEPLOY_RUN_PORT:-5000}" --workers 2 --time
 
 ## 9. 常见问题（FAQ）
 
+- 平台部署构建失败、错误含 `"/app/.next/static": not found`（或 `.next/standalone`、`/app/public`
+  not found）：平台部署走 K8s `nextjs-v3` profile，运行时阶段硬编码 Next.js standalone 布局
+  `COPY --from=build /app/.next/standalone ./`、`/app/.next/static`、`/app/public`，并以非 root
+  `node` 用户执行 `node server.js`。本项目是 Flask，由 `scripts/build.sh` 在构建期组装满足该
+  契约的自包含 payload：`.next/standalone/` 内置 vendored 独立 CPython（`.python/`，
+  `astral-sh/python-build-standalone`，构建期 node 下载，依赖随包装入 `vendor-py/`）+
+  Flask 源码 + `server.js` 入口（spawn Python 并转发信号）；`.next/static` 与 `public` 放
+  静态资源保证 COPY 成功。运行时以 `node server.js` 拉起（`scripts/standalone-server.js`
+  注入 `PYTHONPATH`/`LD_LIBRARY_PATH`/`PYTHONHOME`）。`start.sh` 作为备选入口同样支持
+  payload 布局。
 - 平台部署构建失败、错误含 `python3: command not found`：平台按 `.coder` 的 `requires = ["nodejs-24"]`
   生成 Node 构建/运行镜像（`node:24-bookworm-slim`），镜像内**没有系统 Python**（仓库自带
   `Dockerfile` 未被平台使用；沙箱/dev 环境自带 Python 所以本地预览正常）。已适配：
   `scripts/build.sh` 分层解析解释器（系统 python3 → apt-get 安装 → node 下载独立 CPython 到
-  `.python/`），任一层可用即装依赖，全部不可用时跳过可选步骤并让构建成功（应用为纯源码无需编译），
-  依赖安装顺延到容器启动由 `scripts/start.sh` 重试；`start.sh` 运行时按同样顺序解析解释器
-  （系统 python3 → `.python/` → apt-get）并探测依赖、缺装才补。`.python/` 已加入
-  `.gitignore`/`.dockerignore`。
+  `.python/`），用于构建期校验；运行时解释器永远以 vendored `.python/` 随 payload 携带。
+  `.python/`、`.next/`、`vendor-py/`、`public/` 已加入 `.gitignore`/`.dockerignore`。
 - `/ready` 返回 `503`：通常是 `ai:false`（未配置 `AI_*`）或无 DB；页面功能不受 `ai` 影响。
 - 生产启动即报 `Production requires PostgreSQL`：`DATABASE_URL` 未指向 PostgreSQL，请配置后重启。
 - `PEP 668 externally-managed-environment`：沙箱需加 `--break-system-packages --user`；生产走 Docker 不受影响。

@@ -29,3 +29,6 @@ tmp/
 node_modules/
 .workbuddy/
 .python/
+.next/
+vendor-py/
+public/
